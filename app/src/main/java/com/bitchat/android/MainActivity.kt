@@ -3,6 +3,7 @@ package com.bitchat.android
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -164,7 +165,28 @@ class MainActivity : OrientationAwareActivity() {
                 }
             }
         }
-        
+
+        // Prevents app switcher screenshots when private chat is open
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // TODO: Enable screenshots in debug (maybe Buildconfig.debug)
+                chatViewModel.privateChatSheetPeer.collect { peerID ->
+                    if (peerID != null) {
+                        // Private chat opened - enable FLAG_SECURE to prevent screenshots/app switcher capture
+                        window.setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE
+                        )
+                        Log.d("MainActivity", "FLAG_SECURE enabled for private chat with $peerID")
+                    } else {
+                        // Private chat closed - disable FLAG_SECURE to allow screenshots
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        Log.d("MainActivity", "FLAG_SECURE disabled, private chat closed")
+                    }
+                }
+            }
+        }
+
         // Only start onboarding process if we're in the initial CHECKING state
         // This prevents restarting onboarding on configuration changes
         if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) {
