@@ -45,7 +45,7 @@ Three defects explain the reported behaviour:
 | --- | --- |
 | Serve the installed APK in place; never copy it | Removes the 73MB duplicate, the disk-space failure that causes the bogus download prompt, and the undeletable-artifact problem, because there is no artifact |
 | Custom `ContentProvider` for the share sheet | `FileProvider` can only serve roots declared in `file_paths.xml`, all app-private; `/data/app/…/base.apk` cannot be added. A provider returning a `ParcelFileDescriptor` opened in our own process can |
-| ABI-limited installs share in place, with download as opt-in | Sharing works immediately; the user chooses wider coverage rather than being blocked by a mandatory download |
+| Share in place by default, with the universal download always available | Sharing works immediately; the user chooses wider coverage rather than being blocked by a mandatory download, and never loses the ability to fetch the universal artifact |
 | Tell both the sharer and the recipient about ABI limits | The recipient suffers the mismatch but only the sharer can fix it |
 
 ### Non-goals
@@ -53,6 +53,21 @@ Three defects explain the reported behaviour:
 - Detecting the recipient's architecture from the browser User-Agent. It is unreliable
   on Android, and a wrong "incompatible" banner is worse than an accurate static one.
 - Changing anything about the GitHub download path itself beyond when it is required.
+
+### Deferred to a follow-up: choosing the source when hosting
+
+When both a usable installed APK and a cached universal download are present, this
+change picks between them by the precedence rule below. A later change should let the
+user choose explicitly at hosting time instead.
+
+It is deliberately not in scope here. This change is a bug fix — a forced download and
+an unreclaimable 73MB cache — while the picker is an enhancement to behaviour that will
+already be correct. Keeping them apart also keeps this change reviewable; it already
+touches eight call sites.
+
+`ShareSource` is the abstraction a picker sits on: once both candidates are values of the
+same type, presenting them as a choice is a UI concern rather than a resolution one, and
+the precedence rule below becomes the default selection rather than a hidden decision.
 
 ## Design
 
@@ -118,11 +133,17 @@ receives `File(sourceDir)` directly.
 **Sharer**, on the share screen:
 
 - `UNIVERSAL` — one line: "Works on all Android devices."
-- `ARM64` — a note plus the opt-in action:
+- `ARM64` — a note explaining the limit:
   > **Works on most phones, but not all**
   > This copy installs on 64-bit ARM devices — nearly every phone from the last few
   > years. It won't install on older 32-bit phones or Chromebooks.
-  > `[ Get universal version · <size> ]`
+
+The `[ Get universal version · <size> ]` action is offered **in every case**, not only
+when the installed APK is ABI-limited. Sharing in place is the default, never the only
+option: a user may want the universal artifact for reasons this code cannot infer, and
+removing the ability to fetch it would be a capability regression. When a universal
+artifact is already cached, the action is replaced by an indication that it is present
+and in use.
 
 **Recipient**, on the landing page `ApkWebServer` already serves: a third cell in the
 existing info grid, so it is visible before downloading rather than after a failed
