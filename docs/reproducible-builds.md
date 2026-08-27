@@ -279,3 +279,5 @@ version, archive checksum, and base-image digest together. Native updates follow
 - [Play Console App bundle explorer](https://support.google.com/googleplay/android-developer/answer/9859152)
 - [Android `bundletool`](https://developer.android.com/tools/bundletool)
 - [Android `apksigner`](https://developer.android.com/tools/apksigner)
+
+<!-- ci trigger verification, reverted immediately -->
