@@ -85,6 +85,14 @@ import com.bitchat.android.features.voice.AudioWaveformExtractor
 import com.bitchat.android.ui.media.RealtimeScrollingWaveform
 import com.bitchat.android.ui.media.ImagePickerButton
 import com.bitchat.android.ui.media.FilePickerButton
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
+import androidx.compose.ui.input.key.type
+import com.bitchat.android.util.withLineBreak
 
 /**
  * Input components for ChatScreen
@@ -305,6 +313,7 @@ internal fun ComposerActionSurface(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MessageInput(
     value: TextFieldValue,
@@ -438,7 +447,13 @@ fun MessageInput(
                     cursorBrush = SolidColor(
                         if (isRecording || cashuToken != null) Color.Transparent else colorScheme.onSurface
                     ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    // Default rather than Send so the soft keyboard offers a return key and
+                    // the composer can hold more than one line. Sending stays on the button,
+                    // as it does in WhatsApp and Signal. The cashu path is single-line and has
+                    // nothing to break onto a second line, so it keeps Send.
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = if (cashuToken != null) ImeAction.Send else ImeAction.Default
+                    ),
                     keyboardActions = KeyboardActions(onSend = {
                         if (hasText) onSend()
                     }),
@@ -468,6 +483,28 @@ fun MessageInput(
                         .focusRequester(focusRequester)
                         .onFocusChanged { focusState ->
                             isFocused.value = focusState.isFocused
+                        }
+                        // Hardware keyboards only: Enter sends, Shift+Enter breaks the line.
+                        // A soft keyboard's return key never arrives here, it commits a newline
+                        // through the IME instead.
+                        .onPreInterceptKeyBeforeSoftKeyboard { keyEvent ->
+                            val isEnter =
+                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter
+                            when {
+                                !isEnter -> false
+                                // Claim the release as well. Shift is already up by the
+                                // time Enter comes up, so an unclaimed release reads as a
+                                // plain Enter and sends the line the user just broke.
+                                keyEvent.type != KeyEventType.KeyDown -> true
+                                keyEvent.isShiftPressed -> {
+                                    onValueChange(value.withLineBreak())
+                                    true
+                                }
+                                else -> {
+                                    if (hasText) onSend()
+                                    true
+                                }
+                            }
                         }
                 )
 
