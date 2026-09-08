@@ -82,6 +82,9 @@ class MainActivity : OrientationAwareActivity() {
     // let a Bluetooth switch-off go unnoticed once chat became its own route.
     private var bluetoothStateReceiver: android.content.BroadcastReceiver? = null
 
+    @Inject
+    lateinit var locationChannelManager: LocationChannelManager
+
     private val forceFinishReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
             if (intent.action == com.bitchat.android.util.AppConstants.UI.ACTION_FORCE_FINISH) {
@@ -785,7 +788,7 @@ class MainActivity : OrientationAwareActivity() {
     override fun onResume() {
         super.onResume()
         // Revoke stale live-location work before any resumed UI can use cached channels.
-        LocationChannelManager.getInstance(applicationContext).syncPermissionState()
+        locationChannelManager.syncPermissionState()
 
         // Check Bluetooth and Location status on resume and handle accordingly
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
