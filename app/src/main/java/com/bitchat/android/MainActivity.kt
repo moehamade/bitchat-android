@@ -221,7 +221,11 @@ class MainActivity : OrientationAwareActivity() {
                         enabled = navigator.backStack.lastOrNull() == ChatRoute &&
                             pendingBackAction != BackAction.None
                     ) {
-                        chatViewModel.handleBackPressed()
+                        // enabled trails the state by a dispatch and a recomposition, so a
+                        // second quick press can arrive with nothing left to unwind. Forward
+                        // it rather than swallowing it: pop a route if there is one, and
+                        // otherwise leave, which is what the press would have done anyway.
+                        if (!chatViewModel.handleBackPressed() && !navigator.goBack()) finish()
                     }
                 }
             }
