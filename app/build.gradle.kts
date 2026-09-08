@@ -130,6 +130,7 @@ kotlin {
 dependencies {
     // Project modules
     implementation(project(":core:domain"))
+    implementation(project(":core:navigation"))
 
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
@@ -200,11 +201,6 @@ dependencies {
     // EXIF orientation handling for images
     implementation(libs.androidx.exifinterface)
     
-    // Testing
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.androidx.navigation3.ui)
-    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-
     testImplementation(libs.bundles.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
