@@ -1,6 +1,7 @@
 import com.android.build.api.dsl.LibraryExtension
 import com.bitchat.convention.int
 import com.bitchat.convention.libs
+import com.bitchat.convention.version
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -30,6 +31,11 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
 
         extensions.configure<LibraryExtension> {
             compileSdk = libs.int("compileSdk")
+            // Pinned, not defaulted. AGP's built-in default is a lower build-tools
+            // than :app and :wear pin, and the reproducible-build container ships
+            // exactly one build-tools directory. A module defaulting here would
+            // reach for a version that is not in the image.
+            buildToolsVersion = libs.version("buildTools")
             defaultConfig {
                 minSdk = libs.int("minSdk")
             }
