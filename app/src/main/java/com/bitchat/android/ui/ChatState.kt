@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.SharingStarted.Companion.WhileSubscribed
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -170,26 +169,6 @@ class ChatState(
             initialValue = false
         )
     
-    // Mirrors the branches of ChatViewModel.handleBackPressed. The back handler
-    // is enabled from this and the press consumed by that, so they must agree.
-    val canHandleBack: StateFlow<Boolean> = combine(
-        _showAppInfo,
-        _showPasswordPrompt,
-        _selectedPrivateChatPeer,
-        _privateChatSheetPeer,
-        _currentChannel
-    ) { showAppInfo, showPasswordPrompt, privateChatPeer, privateChatSheetPeer, channel ->
-        showAppInfo ||
-            showPasswordPrompt ||
-            privateChatPeer != null ||
-            privateChatSheetPeer != null ||
-            channel != null
-    }.stateIn(
-        scope = scope,
-        started = WhileSubscribed(5_000),
-        initialValue = false
-    )
-
     // Getters for internal state access
     fun getMessagesValue() = _messages.value
     fun getConnectedPeersValue() = _connectedPeers.value

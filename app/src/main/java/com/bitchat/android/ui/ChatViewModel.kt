@@ -390,7 +390,6 @@ class ChatViewModel @Inject constructor(
     val passwordPromptChannel: StateFlow<String?> = state.passwordPromptChannel
     val hasUnreadChannels = state.hasUnreadChannels
     val hasUnreadPrivateMessages = state.hasUnreadPrivateMessages
-    val canHandleBack = state.canHandleBack
     val showCommandSuggestions: StateFlow<Boolean> = state.showCommandSuggestions
     val commandSuggestions: StateFlow<List<CommandSuggestion>> = state.commandSuggestions
     val showMentionSuggestions: StateFlow<Boolean> = state.showMentionSuggestions
@@ -1694,30 +1693,27 @@ class ChatViewModel @Inject constructor(
      * Returns true if the back press was handled, false if it should be passed to the system
      */
     fun handleBackPressed(): Boolean {
-        return when {
-            // Close app info dialog
-            state.getShowAppInfoValue() -> {
+        // pendingBackAction decides, this performs. The split keeps the unwind
+        // order testable without constructing a ChatViewModel.
+        return when (state.pendingBackAction()) {
+            BackAction.DismissAppInfo -> {
                 hideAppInfo()
                 true
             }
-            // Close password dialog
-            state.getShowPasswordPromptValue() -> {
+            BackAction.DismissPasswordPrompt -> {
                 state.setShowPasswordPrompt(false)
                 state.setPasswordPromptChannel(null)
                 true
             }
-            // Exit private chat
-            state.getSelectedPrivateChatPeerValue() != null || state.getPrivateChatSheetPeerValue() != null -> {
+            BackAction.ExitPrivateChat -> {
                 endPrivateChat()
                 true
             }
-            // Exit channel view
-            state.getCurrentChannelValue() != null -> {
+            BackAction.ExitChannel -> {
                 switchToChannel(null)
                 true
             }
-            // No special navigation state - let system handle (usually exits app)
-            else -> false
+            BackAction.None -> false
         }
     }
 
