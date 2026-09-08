@@ -128,6 +128,9 @@ kotlin {
 }
 
 dependencies {
+    // Project modules
+    implementation(project(":core:domain"))
+
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
