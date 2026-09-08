@@ -1,8 +1,11 @@
 package com.bitchat.android.ui
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -19,11 +22,24 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatStateBackNavigationTest {
 
+    private lateinit var scope: TestScope
     private lateinit var state: ChatState
+    private var subscription: Job? = null
 
     @Before
     fun setUp() {
-        state = ChatState(TestScope(UnconfinedTestDispatcher()))
+        scope = TestScope(UnconfinedTestDispatcher())
+        state = ChatState(scope)
+    }
+
+    @After
+    fun tearDown() {
+        subscription?.cancel()
+    }
+
+    /** The flow is WhileSubscribed, so it only tracks its sources while collected. */
+    private fun observePendingBackAction() {
+        subscription = scope.launch { state.pendingBackAction.collect { } }
     }
 
     @Test
@@ -86,5 +102,30 @@ class ChatStateBackNavigationTest {
 
         state.setCurrentChannel(null)
         assertEquals(BackAction.None, state.pendingBackAction())
+    }
+
+    @Test
+    fun `the observable action agrees with the decision it gates`() {
+        observePendingBackAction()
+
+        assertEquals(BackAction.None, state.pendingBackAction.value)
+
+        state.setCurrentChannel("#bitchat")
+        assertEquals(BackAction.ExitChannel, state.pendingBackAction.value)
+
+        state.setShowAppInfo(true)
+        assertEquals(BackAction.DismissAppInfo, state.pendingBackAction.value)
+    }
+
+    @Test
+    fun `the observable action reaches None so the handler stops claiming Back`() {
+        observePendingBackAction()
+        state.setCurrentChannel("#bitchat")
+
+        state.setCurrentChannel(null)
+
+        // The chat back handler is enabled from this. If it stayed non-None with
+        // nothing open, Back would be swallowed instead of leaving the app.
+        assertEquals(BackAction.None, state.pendingBackAction.value)
     }
 }

@@ -1692,6 +1692,9 @@ class ChatViewModel @Inject constructor(
      * Handle Android back navigation
      * Returns true if the back press was handled, false if it should be passed to the system
      */
+    /** What Back would unwind next; drives the chat screen's back handler. */
+    val pendingBackAction = state.pendingBackAction
+
     fun handleBackPressed(): Boolean {
         // pendingBackAction decides, this performs. The split keeps the unwind
         // order testable without constructing a ChatViewModel.
