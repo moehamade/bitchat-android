@@ -66,9 +66,17 @@ need (Gradle forbids a library module depending on an application module).
 the include list in `wear/build.gradle.kts`. Extend that list; never copy
 shared Kotlin into `wear/src/` or edit generated `build/` content.
 
+`core/navigation/` holds the Navigator, the NavDisplay host and the Hilt
+module that binds them. Routes stay in `app/`, because they name this app's
+destinations. Both `core/` modules keep the package names they had inside
+`app/`, so moving a file between them needs no import changes.
+
 `build-logic/` holds the Gradle convention plugins (`bitchat.android.*`)
 applied by library modules. It is an included build; it does not appear in
-`settings.gradle.kts` as a project.
+`settings.gradle.kts` as a project. A convention plugin must pin every build
+setting `app/build.gradle.kts` pins, `buildToolsVersion` included: a library
+that defaults instead resolves whatever AGP defaults to, which the
+reproducible-build container does not ship.
 
 ## Build, Test & Development Commands
 
