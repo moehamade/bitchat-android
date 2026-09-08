@@ -12,18 +12,17 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 /**
  * Baseline configuration for a bitchat Android library module.
  *
- * AGP 9 applies the Kotlin Android plugin itself, so this deliberately does
- * not apply org.jetbrains.kotlin.android — applying it would apply it twice.
- * That is also why gradle/libs.versions.toml has no kotlin-android entry.
+ * AGP 9 applies the Kotlin Android plugin itself, so this must not apply
+ * org.jetbrains.kotlin.android as well — which is also why
+ * gradle/libs.versions.toml has no kotlin-android entry.
  *
- * The SDK and Java levels mirror app/build.gradle.kts rather than introducing
- * new values. They must agree: :app compiles to Java 11 bytecode, and a
- * library emitting a higher class-file version would fail to dex.
+ * The SDK and Java levels mirror app/build.gradle.kts and have to agree with it:
+ * :app compiles to Java 11 bytecode, and a library emitting a higher class-file
+ * version would fail to dex.
  *
- * Configuration is written against LibraryExtension rather than the shared
- * CommonExtension because AGP 9 declares the block-syntax overloads
- * (defaultConfig, compileOptions, lint) only on the concrete extension types;
- * CommonExtension exposes getters alone.
+ * LibraryExtension rather than the shared CommonExtension: AGP 9 declares the
+ * block-syntax overloads (defaultConfig, compileOptions, lint) only on the
+ * concrete extension types.
  */
 class AndroidLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -31,10 +30,8 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
 
         extensions.configure<LibraryExtension> {
             compileSdk = libs.int("compileSdk")
-            // Pinned, not defaulted. AGP's built-in default is a lower build-tools
-            // than :app and :wear pin, and the reproducible-build container ships
-            // exactly one build-tools directory. A module defaulting here would
-            // reach for a version that is not in the image.
+            // Pinned, not defaulted: the reproducible-build container ships exactly
+            // one build-tools version, and AGP's default is a lower one.
             buildToolsVersion = libs.version("buildTools")
             defaultConfig {
                 minSdk = libs.int("minSdk")

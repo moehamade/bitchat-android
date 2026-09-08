@@ -209,17 +209,13 @@ class MainActivity : OrientationAwareActivity() {
                         )
                     }
 
-                    // The chat screen is the root entry, and NavDisplay enables its
-                    // own handler only when something sits beneath the current scene
-                    // (isBackEnabled = scene.previousEntries.isNotEmpty()). At depth
-                    // one that is never true, so without this the press falls through
-                    // to the system and closes the app with an overlay still open.
-                    //
-                    // Composed after NavDisplay on purpose: among enabled handlers the
-                    // last one composed wins, so overlays unwind before routes pop.
-                    // Called unconditionally, and gated by isBackEnabled, because a
-                    // conditional call would reorder composition and change which
-                    // handler wins.
+                    // NavDisplay enables its own back handler only while
+                    // scene.previousEntries.isNotEmpty(), so at the root destination it
+                    // takes no press and Back would close the app with an overlay open.
+                    // Composed after NavDisplay because the last-composed enabled
+                    // handler wins, so overlays unwind before routes pop; called
+                    // unconditionally and gated by `enabled`, because a conditional
+                    // call would reorder composition.
                     val pendingBackAction by chatViewModel.pendingBackAction.collectAsState()
                     BackHandler(
                         enabled = navigator.backStack.lastOrNull() == ChatRoute &&

@@ -4,8 +4,7 @@ package com.bitchat.android.ui
  * What a Back press should unwind next on the chat screen.
  *
  * The chat screen still layers its overlays as booleans and nullable peers on
- * [ChatState] rather than as back-stack entries. Until the route conversion
- * turns each of them into a destination, Back has to be resolved by asking
+ * [ChatState] rather than as back-stack entries, so Back is resolved by asking
  * which overlay is outermost.
  */
 enum class BackAction {
@@ -21,10 +20,10 @@ enum class BackAction {
 /**
  * The unwind order, over plain values.
  *
- * The declaration order of these branches *is* the order Back unwinds in, and
- * is what ChatStateBackNavigationTest pins. It takes values rather than reading
- * [ChatState] so that the same decision can be reached two ways: once from the
- * current values, and once from a flow that recomposes the UI when it changes.
+ * The declaration order of these branches *is* the order Back unwinds in, and is
+ * what ChatStateBackNavigationTest pins. It takes values rather than reading
+ * [ChatState] so the same decision can be reached from the current values or from
+ * a flow.
  */
 internal fun backActionFor(
     showAppInfo: Boolean,
@@ -43,9 +42,9 @@ internal fun backActionFor(
 /**
  * Names what Back would unwind without unwinding it.
  *
- * Kept separate from [ChatViewModel.handleBackPressed] so the ordering is
- * decidable from state alone: the ViewModel owns four process-wide singletons
- * and cannot be built in a unit test, while this can.
+ * Kept out of [ChatViewModel.handleBackPressed] so the ordering is decidable
+ * from state alone: the ViewModel owns four process-wide singletons and cannot
+ * be built in a unit test.
  */
 fun ChatState.pendingBackAction(): BackAction = backActionFor(
     showAppInfo = getShowAppInfoValue(),

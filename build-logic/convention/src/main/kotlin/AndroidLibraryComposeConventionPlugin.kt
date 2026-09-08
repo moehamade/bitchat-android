@@ -9,10 +9,9 @@ import org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginE
 /**
  * Compose configuration for a bitchat Android library module.
  *
- * includeComposeMappingFile is disabled to match :app and :wear. Kotlin
- * 2.4.10's optional Compose group-key mapping depends on unspecified
- * class-file iteration order, and leaving it on in a library would
- * reintroduce the nondeterminism the release pipeline byte-compares against.
+ * includeComposeMappingFile is disabled to match :app and :wear: Kotlin 2.4.10's
+ * optional Compose group-key mapping depends on unspecified class-file iteration
+ * order, which would cost the release build its byte-for-byte determinism.
  */
 class AndroidLibraryComposeConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {

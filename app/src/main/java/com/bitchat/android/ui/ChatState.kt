@@ -170,12 +170,9 @@ class ChatState(
             initialValue = false
         )
     
-    // What Back unwinds next, as something Compose can observe. The chat screen
-    // sits at the root of the back stack, where NavDisplay disables its own back
-    // handler (isBackEnabled = scene.previousEntries.isNotEmpty()), so the press
-    // has to be claimed by a handler enabled from this. WhileSubscribed keeps it
-    // warm across an Activity recreation rather than falling back to None, which
-    // would let Back exit the app with an overlay still open.
+    // What Back unwinds next, as something Compose can observe. WhileSubscribed
+    // keeps it warm across an Activity recreation rather than falling back to
+    // None, which would let Back exit the app with an overlay still open.
     val pendingBackAction: StateFlow<BackAction> = combine(
         _showAppInfo,
         _showPasswordPrompt,

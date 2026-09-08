@@ -74,9 +74,7 @@ destinations. Both `core/` modules keep the package names they had inside
 `build-logic/` holds the Gradle convention plugins (`bitchat.android.*`)
 applied by library modules. It is an included build; it does not appear in
 `settings.gradle.kts` as a project. A convention plugin must pin every build
-setting `app/build.gradle.kts` pins, `buildToolsVersion` included: a library
-that defaults instead resolves whatever AGP defaults to, which the
-reproducible-build container does not ship.
+setting `app/build.gradle.kts` pins, `buildToolsVersion` included.
 
 ## Build, Test & Development Commands
 

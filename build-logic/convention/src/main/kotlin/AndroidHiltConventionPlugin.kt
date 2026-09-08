@@ -7,8 +7,7 @@ import org.gradle.kotlin.dsl.dependencies
  * Hilt + KSP for a library module.
  *
  * Applied on top of bitchat.android.library rather than including it, so a
- * module chooses its own base (plain library or Compose library) and adds
- * injection to it.
+ * module picks its own base (plain library or Compose library).
  */
 class AndroidHiltConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {

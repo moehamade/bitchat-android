@@ -14,11 +14,10 @@ import androidx.navigation3.ui.NavDisplay
  * means adding an @IntoSet provider in the owning feature — this function never
  * changes.
  *
- * NavDisplay drives predictive back through androidx.navigationevent, and only
- * while something sits beneath the current scene. A screen that owns overlays
- * the back stack does not model has to claim the press itself, with a handler
- * that registers into the same dispatcher — androidx.activity.compose's
- * BackHandler does, and among enabled handlers the last one composed wins.
+ * NavDisplay claims Back only while something sits beneath the current scene. A
+ * screen that owns overlays the back stack does not model has to claim the press
+ * itself with androidx.activity.compose's BackHandler, which registers into the
+ * same dispatcher; among enabled handlers the last one composed wins.
  */
 @Composable
 fun BitchatNavDisplay(

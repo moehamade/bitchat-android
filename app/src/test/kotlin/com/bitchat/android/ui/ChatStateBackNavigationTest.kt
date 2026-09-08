@@ -13,11 +13,10 @@ import org.junit.Test
 /**
  * The order in which Back unwinds the chat screen's overlays.
  *
- * [ChatViewModel.handleBackPressed] performs whatever [pendingBackAction]
- * names, so pinning the decision here pins the behaviour without standing up
- * a ViewModel. The order matters more than any single case: it is the
- * contract the route conversion has to preserve when these overlays stop
- * being booleans and become back-stack entries.
+ * [ChatViewModel.handleBackPressed] performs whatever [pendingBackAction] names,
+ * so pinning the decision here pins the behaviour. The order is the contract the
+ * route conversion has to preserve when these overlays stop being booleans and
+ * become back-stack entries.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatStateBackNavigationTest {

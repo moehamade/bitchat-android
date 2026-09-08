@@ -70,9 +70,8 @@ class MeshDelegateHandler(
                     }
                 }
             } else if (message.channel != null) {
-                // Channel message: AppStateStore is the source of truth for list; only manage unread.
-                // Read into a local first: BitchatMessage lives in :core:domain, and Kotlin will not
-                // smart-cast a property declared in another module.
+                // Channel message: AppStateStore is the source of truth for list; only manage unread
+                // Local val: no smart-cast across the :core:domain module boundary.
                 val channel = message.channel
                 if (channel != null && state.getJoinedChannelsValue().contains(channel)) {
                     val viewingClassic = state.getCurrentChannelValue() == channel
