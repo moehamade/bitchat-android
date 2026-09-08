@@ -19,19 +19,38 @@ enum class BackAction {
 }
 
 /**
+ * The unwind order, over plain values.
+ *
+ * The declaration order of these branches *is* the order Back unwinds in, and
+ * is what ChatStateBackNavigationTest pins. It takes values rather than reading
+ * [ChatState] so that the same decision can be reached two ways: once from the
+ * current values, and once from a flow that recomposes the UI when it changes.
+ */
+internal fun backActionFor(
+    showAppInfo: Boolean,
+    showPasswordPrompt: Boolean,
+    selectedPrivateChatPeer: String?,
+    privateChatSheetPeer: String?,
+    currentChannel: String?
+): BackAction = when {
+    showAppInfo -> BackAction.DismissAppInfo
+    showPasswordPrompt -> BackAction.DismissPasswordPrompt
+    selectedPrivateChatPeer != null || privateChatSheetPeer != null -> BackAction.ExitPrivateChat
+    currentChannel != null -> BackAction.ExitChannel
+    else -> BackAction.None
+}
+
+/**
  * Names what Back would unwind without unwinding it.
  *
  * Kept separate from [ChatViewModel.handleBackPressed] so the ordering is
  * decidable from state alone: the ViewModel owns four process-wide singletons
- * and cannot be built in a unit test, while this can. The declaration order
- * of the branches below *is* the unwind order, and is what
- * ChatStateBackNavigationTest pins.
+ * and cannot be built in a unit test, while this can.
  */
-fun ChatState.pendingBackAction(): BackAction = when {
-    getShowAppInfoValue() -> BackAction.DismissAppInfo
-    getShowPasswordPromptValue() -> BackAction.DismissPasswordPrompt
-    getSelectedPrivateChatPeerValue() != null ||
-        getPrivateChatSheetPeerValue() != null -> BackAction.ExitPrivateChat
-    getCurrentChannelValue() != null -> BackAction.ExitChannel
-    else -> BackAction.None
-}
+fun ChatState.pendingBackAction(): BackAction = backActionFor(
+    showAppInfo = getShowAppInfoValue(),
+    showPasswordPrompt = getShowPasswordPromptValue(),
+    selectedPrivateChatPeer = getSelectedPrivateChatPeerValue(),
+    privateChatSheetPeer = getPrivateChatSheetPeerValue(),
+    currentChannel = getCurrentChannelValue()
+)

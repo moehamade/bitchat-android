@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -36,6 +37,7 @@ import com.bitchat.android.onboarding.OnboardingCoordinator
 import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
+import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
@@ -204,11 +206,26 @@ class MainActivity : OrientationAwareActivity() {
                             entryInstallers = setOf(entries),
                             onExit = { finish() },
                             modifier = Modifier.fillMaxSize(),
-                            interceptBack = {
-                                navigator.backStack.lastOrNull() == ChatRoute &&
-                                    chatViewModel.handleBackPressed()
-                            },
                         )
+                    }
+
+                    // The chat screen is the root entry, and NavDisplay enables its
+                    // own handler only when something sits beneath the current scene
+                    // (isBackEnabled = scene.previousEntries.isNotEmpty()). At depth
+                    // one that is never true, so without this the press falls through
+                    // to the system and closes the app with an overlay still open.
+                    //
+                    // Composed after NavDisplay on purpose: among enabled handlers the
+                    // last one composed wins, so overlays unwind before routes pop.
+                    // Called unconditionally, and gated by isBackEnabled, because a
+                    // conditional call would reorder composition and change which
+                    // handler wins.
+                    val pendingBackAction by chatViewModel.pendingBackAction.collectAsState()
+                    BackHandler(
+                        enabled = navigator.backStack.lastOrNull() == ChatRoute &&
+                            pendingBackAction != BackAction.None
+                    ) {
+                        chatViewModel.handleBackPressed()
                     }
                 }
             }

@@ -14,10 +14,11 @@ import androidx.navigation3.ui.NavDisplay
  * means adding an @IntoSet provider in the owning feature — this function never
  * changes.
  *
- * Back handling belongs here and nowhere else. NavDisplay drives predictive back
- * through androidx.navigationevent; adding a second handler over the same
- * gesture (an OnBackPressedCallback, or PredictiveBackHandler) can detach the
- * navigationevent input mid-gesture and crash.
+ * NavDisplay drives predictive back through androidx.navigationevent, and only
+ * while something sits beneath the current scene. A screen that owns overlays
+ * the back stack does not model has to claim the press itself, with a handler
+ * that registers into the same dispatcher — androidx.activity.compose's
+ * BackHandler does, and among enabled handlers the last one composed wins.
  */
 @Composable
 fun BitchatNavDisplay(
@@ -25,17 +26,11 @@ fun BitchatNavDisplay(
     entryInstallers: Set<EntryProviderInstaller>,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
-    interceptBack: () -> Boolean = { false },
 ) {
     NavDisplay(
         backStack = navigator.backStack,
         modifier = modifier,
-        onBack = {
-            // interceptBack exists only while some screens still manage their own
-            // overlays with booleans instead of routes. It goes away once those
-            // overlays become back-stack entries.
-            if (!interceptBack() && !navigator.goBack()) onExit()
-        },
+        onBack = { if (!navigator.goBack()) onExit() },
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(),
             rememberViewModelStoreNavEntryDecorator(),
