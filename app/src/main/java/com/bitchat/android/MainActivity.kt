@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -44,6 +46,10 @@ import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
 import com.bitchat.android.wifiaware.WifiAwareController
 import com.bitchat.android.nostr.PoWPreferenceManager
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.serialization.NavKeySerializer
+import androidx.savedstate.serialization.decodeFromSavedState
+import androidx.savedstate.serialization.encodeToSavedState
 import com.bitchat.android.navigation.AppNavigator
 import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
@@ -55,6 +61,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
 
 @AndroidEntryPoint
 class MainActivity : OrientationAwareActivity() {
@@ -181,6 +188,24 @@ class MainActivity : OrientationAwareActivity() {
                         .padding(innerPadding)
                     val onboardingState by mainViewModel.onboardingState.collectAsState()
                     val root = rootRouteFor(onboardingState)
+
+                    // Restores the stack after process death. Composed before the
+                    // seeding effect below, which then sees a stack whose root
+                    // already matches and leaves it alone.
+                    //
+                    // NavKeySerializer handles the polymorphism, so this keeps
+                    // working as routes gain arguments. Encoded to a Bundle through
+                    // savedstate rather than to JSON: kotlinx-serialization-json is
+                    // not on the classpath and is not needed here.
+                    val stackSerializer = remember { ListSerializer(NavKeySerializer<NavKey>()) }
+                    rememberSaveable(
+                        saver = Saver(
+                            save = { encodeToSavedState(stackSerializer, navigator.snapshot()) },
+                            restore = { bundle ->
+                                navigator.restore(decodeFromSavedState(stackSerializer, bundle))
+                            }
+                        )
+                    ) { }
 
                     // Seeds the stack on its first run and re-roots it on every
                     // later crossing between onboarding and chat. Keyed on root, so

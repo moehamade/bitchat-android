@@ -2,6 +2,7 @@ package com.bitchat.android.navigation
 
 import androidx.navigation3.runtime.NavKey
 import com.bitchat.android.onboarding.OnboardingState
+import kotlinx.serialization.Serializable
 
 /**
  * Top-level destinations.
@@ -11,8 +12,10 @@ import com.bitchat.android.onboarding.OnboardingState
  * app has never supported going back from one step to the previous one. Giving
  * each step its own entry would invent a history that does not exist.
  */
+@Serializable
 data object OnboardingRoute : NavKey
 
+@Serializable
 data object ChatRoute : NavKey
 
 /**

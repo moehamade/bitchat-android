@@ -14,10 +14,9 @@ import javax.inject.Inject
  * what makes the back stack survive configuration changes — there is no
  * rememberNavBackStack here, and so no requirement that keys be serializable.
  *
- * The stack is *not* restored across process death. Nothing needs that yet:
- * onboarding re-derives its state on launch. When it is needed, the move is
- * kotlinx-serialization plus rememberNavBackStack, which is why keys are kept as
- * plain data objects that would be trivial to annotate.
+ * The stack is restored across process death by MainActivity, which saves
+ * [snapshot] through rememberSaveable, encoding it with NavKeySerializer into
+ * a Bundle. Keys must therefore be @Serializable.
  *
  * Deliberately single-stack. The multi-back-stack pattern exists to serve bottom
  * navigation; this app has no tabs, so it would be a map that only ever holds
@@ -61,5 +60,21 @@ class AppNavigator @Inject constructor() : Navigator {
     override fun resetTo(dest: NavKey) {
         backStack.clear()
         backStack.add(dest)
+    }
+
+    /** The current stack, in a form the saved-state encoder can write to a Bundle. */
+    fun snapshot(): ArrayList<NavKey> = ArrayList(backStack)
+
+    /**
+     * Replaces the stack with a restored one.
+     *
+     * An empty list is ignored rather than applied: a first launch has nothing
+     * saved, and clearing the stack there would undo the seeding effect that
+     * just ran.
+     */
+    fun restore(keys: List<NavKey>) {
+        if (keys.isEmpty()) return
+        backStack.clear()
+        backStack.addAll(keys)
     }
 }

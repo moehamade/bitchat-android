@@ -3,6 +3,7 @@ package com.bitchat.android.navigation
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.bitchat.android.MainActivity
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -28,6 +29,27 @@ class BackDispatchTest {
     private fun pressBack() {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
+    }
+
+    /**
+     * The saved-state round trip, which has no other cover.
+     *
+     * Recreating the Activity runs the rememberSaveable saver in MainActivity:
+     * it encodes the back stack with NavKeySerializer into a Bundle and decodes
+     * it again. A route key that is not @Serializable fails here and nowhere
+     * else, because nothing else forces the encoder to run.
+     *
+     * "Don't keep activities" cannot stand in for this: the mesh foreground
+     * service keeps the Activity alive, so the setting never destroys it.
+     */
+    @Test
+    fun theBackStackSurvivesActivityRecreation() {
+        rule.waitForIdle()
+
+        rule.activityRule.scenario.recreate()
+        rule.waitForIdle()
+
+        assertFalse(rule.activity.isFinishing)
     }
 
     @Test
