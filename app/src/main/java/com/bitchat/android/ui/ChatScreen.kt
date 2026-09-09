@@ -59,7 +59,12 @@ import com.bitchat.android.ui.theme.BitchatMotion
  * - ChatUIUtils: Utility functions for formatting and colors
  */
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    // No default. A default would let a future call site silently keep showing
+    // About as a sheet instead of navigating to the route.
+    onShowAbout: () -> Unit,
+) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
@@ -457,7 +462,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
             viewModel = viewModel,
             colorScheme = colorScheme,
             onSidebarToggle = { viewModel.showMeshPeerList() },
-            onShowAppInfo = { viewModel.showAppInfo() },
+            onShowAppInfo = onShowAbout,
             onPanicClear = { viewModel.panicClearAllData() },
             onLocationChannelsClick = { showLocationChannelsSheet = true },
             onLocationNotesClick = {

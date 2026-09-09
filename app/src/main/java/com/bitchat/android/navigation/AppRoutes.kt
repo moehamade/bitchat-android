@@ -19,6 +19,15 @@ data object OnboardingRoute : NavKey
 data object ChatRoute : NavKey
 
 /**
+ * About, hosted as a destination rather than as a sheet.
+ *
+ * It has internal tabs and stacks Debug on top of itself, which is what makes
+ * it a route rather than a bottom-sheet scene.
+ */
+@Serializable
+data object AboutRoute : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

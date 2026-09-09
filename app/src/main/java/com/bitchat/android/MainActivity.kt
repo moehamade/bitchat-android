@@ -40,6 +40,7 @@ import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.BackAction
+import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.OrientationAwareActivity
@@ -50,6 +51,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.serialization.NavKeySerializer
 import androidx.savedstate.serialization.decodeFromSavedState
 import androidx.savedstate.serialization.encodeToSavedState
+import com.bitchat.android.navigation.AboutRoute
 import com.bitchat.android.navigation.AppNavigator
 import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
@@ -221,7 +223,17 @@ class MainActivity : OrientationAwareActivity() {
 
                     val entries: EntryProviderInstaller = {
                         entry<OnboardingRoute> { OnboardingFlowScreen(onboardingModifier) }
-                        entry<ChatRoute> { ChatScreen(viewModel = chatViewModel) }
+                        entry<ChatRoute> {
+                            ChatScreen(
+                                viewModel = chatViewModel,
+                                onShowAbout = { navigator.goTo(AboutRoute) }
+                            )
+                        }
+                        // onShowDebug is deliberately left off: Debug is still a
+                        // sheet inside About and converts in a later plan.
+                        entry<AboutRoute> {
+                            AboutScreen(onClose = { navigator.goBack() })
+                        }
                     }
 
                     // NavDisplay rejects an empty back stack and the effect above does
