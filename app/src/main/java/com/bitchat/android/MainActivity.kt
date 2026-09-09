@@ -43,6 +43,7 @@ import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.ui.debug.DebugSettingsSheet
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
 import com.bitchat.android.wifiaware.WifiAwareController
@@ -229,10 +230,22 @@ class MainActivity : OrientationAwareActivity() {
                                 onShowAbout = { navigator.goTo(AboutRoute) }
                             )
                         }
-                        // onShowDebug is deliberately left off: Debug is still a
-                        // sheet inside About and converts in a later plan.
                         entry<AboutRoute> {
-                            AboutScreen(onClose = { navigator.goBack() })
+                            // Debug is still a sheet, and About's Settings tab is
+                            // its only entry point, so its host moves here with
+                            // About. It converts to a route in a later plan.
+                            var showDebug by rememberSaveable { mutableStateOf(false) }
+                            AboutScreen(
+                                onClose = { navigator.goBack() },
+                                onShowDebug = { showDebug = true }
+                            )
+                            if (showDebug) {
+                                DebugSettingsSheet(
+                                    isPresented = true,
+                                    onDismiss = { showDebug = false },
+                                    meshService = chatViewModel.meshService
+                                )
+                            }
                         }
                     }
 

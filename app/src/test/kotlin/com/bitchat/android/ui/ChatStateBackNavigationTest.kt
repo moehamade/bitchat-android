@@ -48,13 +48,6 @@ class ChatStateBackNavigationTest {
     }
 
     @Test
-    fun `the app info dialog is unwound`() {
-        state.setShowAppInfo(true)
-
-        assertEquals(BackAction.DismissAppInfo, state.pendingBackAction())
-    }
-
-    @Test
     fun `the password prompt is unwound`() {
         state.setShowPasswordPrompt(true)
 
@@ -100,11 +93,7 @@ class ChatStateBackNavigationTest {
         state.setCurrentChannel("#bitchat")
         state.setSelectedPrivateChatPeer("peer-a")
         state.setShowPasswordPrompt(true)
-        state.setShowAppInfo(true)
 
-        assertEquals(BackAction.DismissAppInfo, state.pendingBackAction())
-
-        state.setShowAppInfo(false)
         assertEquals(BackAction.DismissPasswordPrompt, state.pendingBackAction())
 
         state.setShowPasswordPrompt(false)
@@ -126,8 +115,8 @@ class ChatStateBackNavigationTest {
         state.setCurrentChannel("#bitchat")
         assertEquals(BackAction.ExitChannel, state.pendingBackAction.value)
 
-        state.setShowAppInfo(true)
-        assertEquals(BackAction.DismissAppInfo, state.pendingBackAction.value)
+        state.setShowPasswordPrompt(true)
+        assertEquals(BackAction.DismissPasswordPrompt, state.pendingBackAction.value)
     }
 
     @Test

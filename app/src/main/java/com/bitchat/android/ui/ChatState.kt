@@ -120,8 +120,6 @@ class ChatState(
     // peerIDToPublicKeyFingerprint REMOVED - fingerprints now handled centrally in PeerManager
     
     // Navigation state
-    private val _showAppInfo = MutableStateFlow<Boolean>(false)
-    val showAppInfo: StateFlow<Boolean> = _showAppInfo.asStateFlow()
 
     private val _showMeshPeerList = MutableStateFlow(false)
     val showMeshPeerList: StateFlow<Boolean> = _showMeshPeerList.asStateFlow()
@@ -174,7 +172,6 @@ class ChatState(
     // keeps it warm across an Activity recreation rather than falling back to
     // None, which would let Back exit the app with an overlay still open.
     val pendingBackAction: StateFlow<BackAction> = combine(
-        _showAppInfo,
         _showPasswordPrompt,
         _selectedPrivateChatPeer,
         _privateChatSheetPeer,
@@ -208,7 +205,6 @@ class ChatState(
     fun getFavoritePeersValue() = _favoritePeers.value
     fun getPeerSessionStatesValue() = _peerSessionStates.value
     fun getPeerFingerprintsValue() = _peerFingerprints.value
-    fun getShowAppInfoValue() = _showAppInfo.value
     fun getGeohashPeopleValue() = _geohashPeople.value
 
     fun getShowMeshPeerListValue() = _showMeshPeerList.value
@@ -344,9 +340,6 @@ class ChatState(
         _peerDirect.value = direct
     }
     
-    fun setShowAppInfo(show: Boolean) {
-        _showAppInfo.value = show
-    }
 
     fun setShowVerificationSheet(show: Boolean) {
         _showVerificationSheet.value = show

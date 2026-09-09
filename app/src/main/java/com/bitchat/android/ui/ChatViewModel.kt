@@ -425,7 +425,6 @@ class ChatViewModel @Inject constructor(
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
     val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
-    val showAppInfo: StateFlow<Boolean> = state.showAppInfo
     val showMeshPeerList: StateFlow<Boolean> = state.showMeshPeerList
     val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
     val showVerificationSheet: StateFlow<Boolean> = state.showVerificationSheet
@@ -1692,13 +1691,6 @@ class ChatViewModel @Inject constructor(
 
     // MARK: - Navigation Management
     
-    fun showAppInfo() {
-        state.setShowAppInfo(true)
-    }
-    
-    fun hideAppInfo() {
-        state.setShowAppInfo(false)
-    }
 
     /**
      * Closes the join-password dialog.
@@ -1720,10 +1712,6 @@ class ChatViewModel @Inject constructor(
      */
     fun handleBackPressed(): Boolean {
         return when (state.pendingBackAction()) {
-            BackAction.DismissAppInfo -> {
-                hideAppInfo()
-                true
-            }
             BackAction.DismissPasswordPrompt -> {
                 dismissPasswordPrompt()
                 true

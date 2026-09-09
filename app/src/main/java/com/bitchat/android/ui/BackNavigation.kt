@@ -8,7 +8,6 @@ package com.bitchat.android.ui
  * which overlay is outermost.
  */
 enum class BackAction {
-    DismissAppInfo,
     DismissPasswordPrompt,
     ExitPrivateChat,
     ExitChannel,
@@ -26,13 +25,11 @@ enum class BackAction {
  * a flow.
  */
 internal fun backActionFor(
-    showAppInfo: Boolean,
     showPasswordPrompt: Boolean,
     selectedPrivateChatPeer: String?,
     privateChatSheetPeer: String?,
     currentChannel: String?
 ): BackAction = when {
-    showAppInfo -> BackAction.DismissAppInfo
     showPasswordPrompt -> BackAction.DismissPasswordPrompt
     selectedPrivateChatPeer != null || privateChatSheetPeer != null -> BackAction.ExitPrivateChat
     currentChannel != null -> BackAction.ExitChannel
@@ -47,7 +44,6 @@ internal fun backActionFor(
  * be built in a unit test.
  */
 fun ChatState.pendingBackAction(): BackAction = backActionFor(
-    showAppInfo = getShowAppInfoValue(),
     showPasswordPrompt = getShowPasswordPromptValue(),
     selectedPrivateChatPeer = getSelectedPrivateChatPeerValue(),
     privateChatSheetPeer = getPrivateChatSheetPeerValue(),

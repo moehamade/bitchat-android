@@ -299,10 +299,9 @@ private fun SettingsToggleRow(
 /**
  * About's content, independent of how it is hosted.
  *
- * Extracted so the same content can be shown by [AboutSheet] as a bottom sheet
- * and by [AboutScreen] as a Navigation 3 destination. Closing is requested
- * through [LocalSheetDismiss], which both hosts provide, rather than through a
- * dismiss lambda threaded down the tree.
+ * Kept separate from [AboutScreen] so the content does not depend on how it is
+ * hosted. Closing is requested through [LocalSheetDismiss], which the host
+ * provides, rather than through a dismiss lambda threaded down the tree.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1286,28 +1285,6 @@ internal fun AboutContent(
                     .align(Alignment.CenterEnd)
                     .padding(horizontal = 16.dp),
             )
-        }
-    }
-}
-
-/**
- * Apple-like About/Settings Sheet with high-quality design
- * Professional UX optimized for checkout scenarios
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AboutSheet(
-    isPresented: Boolean,
-    onDismiss: () -> Unit,
-    onShowDebug: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
-    if (isPresented) {
-        BitchatBottomSheet(
-            modifier = modifier,
-            onDismissRequest = onDismiss,
-        ) {
-            AboutContent(onShowDebug = onShowDebug)
         }
     }
 }

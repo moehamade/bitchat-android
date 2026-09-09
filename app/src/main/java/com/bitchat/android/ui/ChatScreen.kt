@@ -55,7 +55,7 @@ import com.bitchat.android.ui.theme.BitchatMotion
  * - MessageComponents: Message display and formatting
  * - InputComponents: Message input and command suggestions
  * - SidebarComponents: Navigation drawer with channels and people
- * - AboutSheet: App info and password prompts
+ * - AboutScreen: a route; this screen only raises the request to open it
  * - ChatUIUtils: Utility functions for formatting and colors
  */
 @Composable
@@ -82,7 +82,6 @@ fun ChatScreen(
     val commandSuggestions by viewModel.commandSuggestions.collectAsStateWithLifecycle()
     val showMentionSuggestions by viewModel.showMentionSuggestions.collectAsStateWithLifecycle()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
-    val showAppInfo by viewModel.showAppInfo.collectAsStateWithLifecycle()
     val showMeshPeerListSheet by viewModel.showMeshPeerList.collectAsStateWithLifecycle()
     val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
     val showVerificationSheet by viewModel.showVerificationSheet.collectAsStateWithLifecycle()
@@ -540,8 +539,6 @@ fun ChatScreen(
             showPasswordDialog = false
             passwordInput = ""
         },
-        showAppInfo = showAppInfo,
-        onAppInfoDismiss = { viewModel.hideAppInfo() },
         showLocationChannelsSheet = showLocationChannelsSheet,
         onLocationChannelsSheetDismiss = { showLocationChannelsSheet = false },
         onLocationNotesFromChannelsClick = {
@@ -828,8 +825,6 @@ private fun ChatDialogs(
     onPasswordChange: (String) -> Unit,
     onPasswordConfirm: () -> Unit,
     onPasswordDismiss: () -> Unit,
-    showAppInfo: Boolean,
-    onAppInfoDismiss: () -> Unit,
     showLocationChannelsSheet: Boolean,
     onLocationChannelsSheetDismiss: () -> Unit,
     onLocationNotesFromChannelsClick: () -> Unit,
@@ -859,21 +854,6 @@ private fun ChatDialogs(
         onDismiss = onPasswordDismiss
     )
 
-    // About sheet
-    var showDebugSheet by remember { mutableStateOf(false) }
-    AboutSheet(
-        isPresented = showAppInfo,
-        onDismiss = onAppInfoDismiss,
-        onShowDebug = { showDebugSheet = true }
-    )
-    if (showDebugSheet) {
-        com.bitchat.android.ui.debug.DebugSettingsSheet(
-            isPresented = showDebugSheet,
-            onDismiss = { showDebugSheet = false },
-            meshService = viewModel.meshService
-        )
-    }
-    
     // Location channels sheet
     if (showLocationChannelsSheet) {
         LocationChannelsSheet(
