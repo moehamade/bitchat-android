@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -58,6 +59,19 @@ class ChatStateBackNavigationTest {
         state.setShowPasswordPrompt(true)
 
         assertEquals(BackAction.DismissPasswordPrompt, state.pendingBackAction())
+    }
+
+    @Test
+    fun `clearing the password prompt hands Back to the next overlay`() {
+        state.setCurrentChannel("#secret")
+        state.setPasswordPromptChannel("#secret")
+        state.setShowPasswordPrompt(true)
+        assertEquals(BackAction.DismissPasswordPrompt, state.pendingBackAction())
+
+        state.clearPasswordPrompt()
+
+        assertEquals(BackAction.ExitChannel, state.pendingBackAction())
+        assertNull(state.getPasswordPromptChannelValue())
     }
 
     @Test

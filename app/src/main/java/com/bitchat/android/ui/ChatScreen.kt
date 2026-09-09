@@ -84,8 +84,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val showSecurityVerificationSheet by viewModel.showSecurityVerificationSheet.collectAsStateWithLifecycle()
     val legacyPrivateMediaConsent by viewModel.legacyPrivateMediaConsent.collectAsStateWithLifecycle()
 
+    val showPasswordPrompt by viewModel.showPasswordPrompt.collectAsStateWithLifecycle()
+
     var messageText by remember { mutableStateOf(TextFieldValue("")) }
-    var showPasswordPrompt by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
@@ -523,12 +524,14 @@ fun ChatScreen(viewModel: ChatViewModel) {
             if (passwordInput.isNotEmpty()) {
                 val success = viewModel.joinChannel(passwordPromptChannel!!, passwordInput)
                 if (success) {
+                    viewModel.dismissPasswordPrompt()
                     showPasswordDialog = false
                     passwordInput = ""
                 }
             }
         },
         onPasswordDismiss = {
+            viewModel.dismissPasswordPrompt()
             showPasswordDialog = false
             passwordInput = ""
         },

@@ -280,6 +280,17 @@ class ChatState(
         _passwordPromptChannel.value = channel
     }
 
+    /**
+     * Closes the prompt and forgets its channel together.
+     *
+     * They are one fact, and clearing only the flag used to leave
+     * [passwordPromptChannel] pointing at a channel with no prompt open.
+     */
+    fun clearPasswordPrompt() {
+        _showPasswordPrompt.value = false
+        _passwordPromptChannel.value = null
+    }
+
     fun setShowCommandSuggestions(show: Boolean) {
         _showCommandSuggestions.value = show
     }

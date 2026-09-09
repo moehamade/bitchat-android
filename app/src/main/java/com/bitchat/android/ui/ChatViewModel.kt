@@ -1700,6 +1700,17 @@ class ChatViewModel @Inject constructor(
         state.setShowAppInfo(false)
     }
 
+    /**
+     * Closes the join-password dialog.
+     *
+     * Both Back and the dialog's own buttons route here, so the flag cannot be
+     * left set by one path and cleared by another. While it is set,
+     * [backActionFor] ranks it above exiting a private chat or a channel.
+     */
+    fun dismissPasswordPrompt() {
+        state.clearPasswordPrompt()
+    }
+
     /** What Back would unwind next; drives the chat screen's back handler. */
     val pendingBackAction = state.pendingBackAction
 
@@ -1714,8 +1725,7 @@ class ChatViewModel @Inject constructor(
                 true
             }
             BackAction.DismissPasswordPrompt -> {
-                state.setShowPasswordPrompt(false)
-                state.setPasswordPromptChannel(null)
+                dismissPasswordPrompt()
                 true
             }
             BackAction.ExitPrivateChat -> {
