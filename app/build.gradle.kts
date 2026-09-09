@@ -204,6 +204,12 @@ dependencies {
     testImplementation(libs.bundles.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    // Declared explicitly, not for direct use: Compose's ui-test drags in
+    // espresso-core 3.5.0, whose input injection reflects on the long-removed
+    // InputManager.getInstance() and dies on API 35+. 3.7.0 is what the unit
+    // test classpath already resolves. Removing this breaks every device test.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
