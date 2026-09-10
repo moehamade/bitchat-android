@@ -8,6 +8,7 @@ import com.bitchat.android.mesh.PeerInfo
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -187,6 +188,28 @@ class MessageRouterTest {
 
         val rebound = MessageRouter.getInstance(context, mesh)
         assertTrue(rebound.isSchedulerRunning)
+    }
+
+    @Test
+    fun `resolving again after the mesh is replaced routes sends to the new mesh`() {
+        val context = RuntimeEnvironment.getApplication()
+        val replacementMesh: MeshService = mock()
+        whenever(replacementMesh.myPeerID).thenReturn(myPeerID)
+        whenever(replacementMesh.getPeerNicknames()).thenReturn(mapOf(peerID to "peer"))
+        whenever(replacementMesh.getPeerInfo(peerID)).thenReturn(peerInfo(isConnected = true))
+        whenever(replacementMesh.hasEstablishedSession(peerID)).thenReturn(true)
+        peerReady()
+
+        // What Provider<MessageRouter> does after recreateMeshServiceAfterPanic().
+        val rebound = MessageRouter.getInstance(context, replacementMesh)
+        assertSame(router, rebound)
+
+        val result = rebound.sendPrivate("after-panic", peerID, "peer", "msg-after-panic")
+
+        assertEquals(MessageRouter.RouteResult.MESH, result)
+        verify(replacementMesh, times(1))
+            .sendPrivateMessage("after-panic", peerID, "peer", "msg-after-panic")
+        verify(mesh, never()).sendPrivateMessage(any(), any(), any(), anyOrNull())
     }
 
     private fun peerOffline() {

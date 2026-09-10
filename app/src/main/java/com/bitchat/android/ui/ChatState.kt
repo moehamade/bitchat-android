@@ -120,8 +120,6 @@ class ChatState(
     // peerIDToPublicKeyFingerprint REMOVED - fingerprints now handled centrally in PeerManager
     
     // Navigation state
-    private val _showAppInfo = MutableStateFlow<Boolean>(false)
-    val showAppInfo: StateFlow<Boolean> = _showAppInfo.asStateFlow()
 
     private val _showMeshPeerList = MutableStateFlow(false)
     val showMeshPeerList: StateFlow<Boolean> = _showMeshPeerList.asStateFlow()
@@ -170,6 +168,21 @@ class ChatState(
             initialValue = false
         )
     
+    // What Back unwinds next, as something Compose can observe. WhileSubscribed
+    // keeps it warm across an Activity recreation rather than falling back to
+    // None, which would let Back exit the app with an overlay still open.
+    val pendingBackAction: StateFlow<BackAction> = combine(
+        _showPasswordPrompt,
+        _selectedPrivateChatPeer,
+        _privateChatSheetPeer,
+        _currentChannel,
+        ::backActionFor
+    ).stateIn(
+        scope = scope,
+        started = WhileSubscribed(5_000),
+        initialValue = BackAction.None
+    )
+
     // Getters for internal state access
     fun getMessagesValue() = _messages.value
     fun getConnectedPeersValue() = _connectedPeers.value
@@ -192,7 +205,6 @@ class ChatState(
     fun getFavoritePeersValue() = _favoritePeers.value
     fun getPeerSessionStatesValue() = _peerSessionStates.value
     fun getPeerFingerprintsValue() = _peerFingerprints.value
-    fun getShowAppInfoValue() = _showAppInfo.value
     fun getGeohashPeopleValue() = _geohashPeople.value
 
     fun getShowMeshPeerListValue() = _showMeshPeerList.value
@@ -264,6 +276,17 @@ class ChatState(
         _passwordPromptChannel.value = channel
     }
 
+    /**
+     * Closes the prompt and forgets its channel together.
+     *
+     * They are one fact, and clearing only the flag used to leave
+     * [passwordPromptChannel] pointing at a channel with no prompt open.
+     */
+    fun clearPasswordPrompt() {
+        _showPasswordPrompt.value = false
+        _passwordPromptChannel.value = null
+    }
+
     fun setShowCommandSuggestions(show: Boolean) {
         _showCommandSuggestions.value = show
     }
@@ -317,9 +340,6 @@ class ChatState(
         _peerDirect.value = direct
     }
     
-    fun setShowAppInfo(show: Boolean) {
-        _showAppInfo.value = show
-    }
 
     fun setShowVerificationSheet(show: Boolean) {
         _showVerificationSheet.value = show

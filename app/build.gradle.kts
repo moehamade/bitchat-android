@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.parcelize)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 val githubReleaseCertSha256 = providers
@@ -126,6 +129,10 @@ kotlin {
 }
 
 dependencies {
+    // Project modules
+    implementation(project(":core:domain"))
+    implementation(project(":core:navigation"))
+
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -141,7 +148,12 @@ dependencies {
     
     // Navigation
     implementation(libs.androidx.navigation.compose)
-    
+
+    // Dependency injection
+    implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.navigation.compose)
+    ksp(libs.hilt.compiler)
+
     // Permissions
     implementation(libs.accompanist.permissions)
 
@@ -190,10 +202,15 @@ dependencies {
     // EXIF orientation handling for images
     implementation(libs.androidx.exifinterface)
     
-    // Testing
     testImplementation(libs.bundles.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    // Declared explicitly, not for direct use: Compose's ui-test drags in
+    // espresso-core 3.5.0, whose input injection reflects on the long-removed
+    // InputManager.getInstance() and dies on API 35+. 3.7.0 is what the unit
+    // test classpath already resolves. Removing this breaks every device test.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 

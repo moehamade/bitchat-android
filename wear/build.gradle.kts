@@ -128,6 +128,12 @@ val syncSharedAppSources = tasks.register<Sync>("syncSharedAppSources") {
         include(sharedSourceIncludes)
         exclude(sharedSourceExcludes)
     }
+    // The model package lives in :core:domain, and the watch compiles those files
+    // from source, so the same globs have to be applied to both roots.
+    from("../core/domain/src/main/java") {
+        include(sharedSourceIncludes)
+        exclude(sharedSourceExcludes)
+    }
     into(layout.buildDirectory.dir("sharedSrc"))
 }
 
