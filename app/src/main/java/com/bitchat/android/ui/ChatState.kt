@@ -127,8 +127,6 @@ class ChatState(
     private val _privateChatSheetPeer = MutableStateFlow<String?>(null)
     val privateChatSheetPeer: StateFlow<String?> = _privateChatSheetPeer.asStateFlow()
 
-    private val _showVerificationSheet = MutableStateFlow(false)
-    val showVerificationSheet: StateFlow<Boolean> = _showVerificationSheet.asStateFlow()
 
     private val _showSecurityVerificationSheet = MutableStateFlow(false)
     val showSecurityVerificationSheet: StateFlow<Boolean> = _showSecurityVerificationSheet.asStateFlow()
@@ -341,9 +339,6 @@ class ChatState(
     }
     
 
-    fun setShowVerificationSheet(show: Boolean) {
-        _showVerificationSheet.value = show
-    }
 
     fun setShowSecurityVerificationSheet(show: Boolean) {
         _showSecurityVerificationSheet.value = show

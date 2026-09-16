@@ -61,6 +61,7 @@ fun ChatScreen(
     onShowAbout: () -> Unit,
     onShowLocationNotes: () -> Unit,
     onShowChatUser: (nickname: String, messageId: String) -> Unit,
+    onShowVerificationFromPeerList: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -81,7 +82,6 @@ fun ChatScreen(
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
     val showMeshPeerListSheet by viewModel.showMeshPeerList.collectAsStateWithLifecycle()
     val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
-    val showVerificationSheet by viewModel.showVerificationSheet.collectAsStateWithLifecycle()
     val showSecurityVerificationSheet by viewModel.showSecurityVerificationSheet.collectAsStateWithLifecycle()
     val legacyPrivateMediaConsent by viewModel.legacyPrivateMediaConsent.collectAsStateWithLifecycle()
 
@@ -502,8 +502,7 @@ fun ChatScreen(
             onShowLocationNotes()
         },
         viewModel = viewModel,
-        showVerificationSheet = showVerificationSheet,
-        onVerificationSheetDismiss = viewModel::hideVerificationSheet,
+        onShowVerificationFromPeerList = onShowVerificationFromPeerList,
         showSecurityVerificationSheet = showSecurityVerificationSheet,
         onSecurityVerificationSheetDismiss = viewModel::hideSecurityVerificationSheet,
         showMeshPeerListSheet = showMeshPeerListSheet,
@@ -776,8 +775,7 @@ private fun ChatDialogs(
     onLocationChannelsSheetDismiss: () -> Unit,
     onLocationNotesFromChannelsClick: () -> Unit,
     viewModel: ChatViewModel,
-    showVerificationSheet: Boolean,
-    onVerificationSheetDismiss: () -> Unit,
+    onShowVerificationFromPeerList: () -> Unit,
     showSecurityVerificationSheet: Boolean,
     onSecurityVerificationSheetDismiss: () -> Unit,
     showMeshPeerListSheet: Boolean,
@@ -813,16 +811,8 @@ private fun ChatDialogs(
             onDismiss = onMeshPeerListDismiss,
             onShowVerification = {
                 onMeshPeerListDismiss()
-                viewModel.showVerificationSheet(fromSidebar = true)
+                onShowVerificationFromPeerList()
             }
-        )
-    }
-
-    if (showVerificationSheet) {
-        VerificationSheet(
-            isPresented = showVerificationSheet,
-            onDismiss = onVerificationSheetDismiss,
-            viewModel = viewModel
         )
     }
 

@@ -45,6 +45,7 @@ import com.bitchat.android.ui.AppForegroundEffect
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatUserSheet
 import com.bitchat.android.ui.LocationNotesSheetPresenter
+import com.bitchat.android.ui.VerificationScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsSheet
 import com.bitchat.android.ui.OrientationAwareActivity
@@ -64,6 +65,7 @@ import com.bitchat.android.navigation.EntryProviderInstaller
 import com.bitchat.android.navigation.LocationNotesRoute
 import com.bitchat.android.navigation.OnboardingRoute
 import com.bitchat.android.navigation.SheetSceneStrategy
+import com.bitchat.android.navigation.VerificationRoute
 import com.bitchat.android.navigation.rootRouteFor
 import com.bitchat.android.services.VerificationService
 import dagger.hilt.android.AndroidEntryPoint
@@ -240,6 +242,32 @@ class MainActivity : OrientationAwareActivity() {
                                 onShowChatUser = { nickname, messageId ->
                                     navigator.goTo(ChatUserRoute(nickname, messageId))
                                 },
+                                onShowVerificationFromPeerList = {
+                                    navigator.goTo(
+                                        VerificationRoute(
+                                            peerID = chatViewModel.selectedPrivateChatPeer.value,
+                                            reopenPeerList = true,
+                                        )
+                                    )
+                                },
+                            )
+                        }
+                        entry<VerificationRoute> { route ->
+                            // One close for the header button and Back. Popping by
+                            // key makes it idempotent, so a second press during the
+                            // exit animation neither pops twice nor reopens the list
+                            // twice. The list is still a sheet over chat, so it
+                            // reopens once chat is back on top.
+                            val close = {
+                                if (navigator.popTo(route, inclusive = true) && route.reopenPeerList) {
+                                    chatViewModel.showMeshPeerList()
+                                }
+                            }
+                            BackHandler(onBack = close)
+                            VerificationScreen(
+                                peerID = route.peerID,
+                                onClose = close,
+                                viewModel = chatViewModel,
                             )
                         }
                         entry<ChatUserRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
@@ -970,7 +998,15 @@ class MainActivity : OrientationAwareActivity() {
         val uri = intent.data ?: return
         if (uri.scheme != "bitchat" || uri.host != "verify") return
 
-        chatViewModel.showVerificationSheet()
+        // Runs after the stack has been seeded: on a cold start from
+        // initializeApp, which only runs once onboarding has put chat at the
+        // root, and otherwise from onNewIntent once onboarding is complete.
+        navigator.goTo(
+            VerificationRoute(
+                peerID = chatViewModel.selectedPrivateChatPeer.value,
+                reopenPeerList = false,
+            )
+        )
         val qr = VerificationService.verifyScannedQR(uri.toString())
         if (qr != null) {
             chatViewModel.beginQRVerification(qr)

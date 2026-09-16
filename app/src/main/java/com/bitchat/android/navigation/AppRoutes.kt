@@ -48,6 +48,17 @@ data object LocationNotesRoute : NavKey
 data class ChatUserRoute(val nickname: String, val messageId: String?) : NavKey
 
 /**
+ * QR verification, a full-screen destination.
+ *
+ * [peerID] is the private conversation it was opened from, for the unverify
+ * action. [reopenPeerList] is set when it was opened from the peer list, which
+ * closes to make way for it and reopens on the way back. Both travel in the
+ * key, so they survive process death along with the stack.
+ */
+@Serializable
+data class VerificationRoute(val peerID: String?, val reopenPeerList: Boolean) : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

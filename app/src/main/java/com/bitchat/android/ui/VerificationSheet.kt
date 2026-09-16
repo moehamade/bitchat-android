@@ -24,11 +24,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +40,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -72,7 +76,6 @@ import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.button.CloseButton
 import com.bitchat.android.core.ui.component.sheet.LocalSheetDismiss
-import com.bitchat.android.core.ui.component.sheet.BitchatBottomSheet
 import com.bitchat.android.services.VerificationService
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -88,16 +91,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * QR verification, as a full-screen destination: its own tabs and a camera
+ * scanner make it a route rather than a sheet.
+ *
+ * [peerID] is the conversation it was opened from, if any, for the unverify
+ * action. It arrives with the route instead of being read from the selected
+ * private chat, so the screen shows the peer it was opened for.
+ */
 @Composable
-fun VerificationSheet(
-    isPresented: Boolean,
-    onDismiss: () -> Unit,
+fun VerificationScreen(
+    peerID: String?,
+    onClose: () -> Unit,
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier
 ) {
-    if (!isPresented) return
-
     val accent = MaterialTheme.colorScheme.primary
     
     var selectedTab by remember { mutableStateOf(0) } // 0 = My Code, 1 = Scan
@@ -108,20 +116,21 @@ fun VerificationSheet(
         viewModel.buildMyQRString(nickname, npub)
     }
 
-    BitchatBottomSheet(
-        modifier = modifier,
-        onDismissRequest = onDismiss,
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Top
         ) {
             // Header
             VerificationHeader(
                 accent = accent,
-                onClose = onDismiss,
+                onClose = onClose,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
 
@@ -188,15 +197,14 @@ fun VerificationSheet(
             }
             
             // Unverify Action
-            val peerID by viewModel.selectedPrivateChatPeer.collectAsStateWithLifecycle()
             val fingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
             
             if (peerID != null) {
-                val fingerprint = viewModel.getMeshPeerFingerprint(peerID!!)
+                val fingerprint = viewModel.getMeshPeerFingerprint(peerID)
                 if (fingerprint != null && fingerprints.contains(fingerprint)) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
-                        onClick = { viewModel.unverifyFingerprint(peerID!!) },
+                        onClick = { viewModel.unverifyFingerprint(peerID) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
                             contentColor = MaterialTheme.colorScheme.onErrorContainer

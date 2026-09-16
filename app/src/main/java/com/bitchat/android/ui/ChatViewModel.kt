@@ -427,7 +427,6 @@ class ChatViewModel @Inject constructor(
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
     val showMeshPeerList: StateFlow<Boolean> = state.showMeshPeerList
     val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
-    val showVerificationSheet: StateFlow<Boolean> = state.showVerificationSheet
     val showSecurityVerificationSheet: StateFlow<Boolean> = state.showSecurityVerificationSheet
     val legacyPrivateMediaConsent: StateFlow<LegacyPrivateMediaConsentRequest?> =
         mediaSendingManager.legacyPrivateMediaConsent
@@ -1319,23 +1318,6 @@ class ChatViewModel @Inject constructor(
 
     fun clearMeshMentionNotifications() {
         notificationManager.clearMeshMentionNotifications()
-    }
-
-    private var reopenSidebarAfterVerification = false
-
-    fun showVerificationSheet(fromSidebar: Boolean = false) {
-        if (fromSidebar) {
-            reopenSidebarAfterVerification = true
-        }
-        state.setShowVerificationSheet(true)
-    }
-
-    fun hideVerificationSheet() {
-        state.setShowVerificationSheet(false)
-        if (reopenSidebarAfterVerification) {
-            reopenSidebarAfterVerification = false
-            state.setShowMeshPeerList(true)
-        }
     }
 
     fun showSecurityVerificationSheet() {
