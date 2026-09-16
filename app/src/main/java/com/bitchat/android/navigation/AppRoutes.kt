@@ -28,6 +28,15 @@ data object ChatRoute : NavKey
 data object AboutRoute : NavKey
 
 /**
+ * Location notes, shown as a sheet over chat.
+ *
+ * No argument: the notes belong to the building the device is in, which the
+ * screen reads from the location manager when it opens.
+ */
+@Serializable
+data object LocationNotesRoute : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

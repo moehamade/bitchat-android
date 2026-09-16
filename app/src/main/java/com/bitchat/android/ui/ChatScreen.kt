@@ -64,6 +64,7 @@ fun ChatScreen(
     // No default. A default would let a future call site silently keep showing
     // About as a sheet instead of navigating to the route.
     onShowAbout: () -> Unit,
+    onShowLocationNotes: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -94,7 +95,6 @@ fun ChatScreen(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
-    var showLocationNotesSheet by remember { mutableStateOf(false) }
     var showUserSheet by remember { mutableStateOf(false) }
     var selectedUserForSheet by remember { mutableStateOf("") }
     var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
@@ -361,7 +361,7 @@ fun ChatScreen(
             if (showNotesStrip) {
                 NearbyNotesStrip(
                     noteCount = nearbyNotes.size,
-                    onClick = { showLocationNotesSheet = true },
+                    onClick = onShowLocationNotes,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = statusBarHeight + headerHeight)
@@ -458,7 +458,7 @@ fun ChatScreen(
             onLocationChannelsClick = { showLocationChannelsSheet = true },
             onLocationNotesClick = {
                 nearbyNotesController.reveal()
-                showLocationNotesSheet = true
+                onShowLocationNotes()
             }
         )
 
@@ -535,10 +535,8 @@ fun ChatScreen(
         onLocationChannelsSheetDismiss = { showLocationChannelsSheet = false },
         onLocationNotesFromChannelsClick = {
             showLocationChannelsSheet = false
-            showLocationNotesSheet = true
+            onShowLocationNotes()
         },
-        showLocationNotesSheet = showLocationNotesSheet,
-        onLocationNotesSheetDismiss = { showLocationNotesSheet = false },
         showUserSheet = showUserSheet,
         onUserSheetDismiss = { 
             showUserSheet = false
@@ -820,8 +818,6 @@ private fun ChatDialogs(
     showLocationChannelsSheet: Boolean,
     onLocationChannelsSheetDismiss: () -> Unit,
     onLocationNotesFromChannelsClick: () -> Unit,
-    showLocationNotesSheet: Boolean,
-    onLocationNotesSheetDismiss: () -> Unit,
     showUserSheet: Boolean,
     onUserSheetDismiss: () -> Unit,
     selectedUserForSheet: String,
@@ -853,14 +849,6 @@ private fun ChatDialogs(
             onDismiss = onLocationChannelsSheetDismiss,
             onLocationNotesClick = onLocationNotesFromChannelsClick,
             viewModel = viewModel
-        )
-    }
-    
-    // Location notes sheet (extracted to separate presenter)
-    if (showLocationNotesSheet) {
-        LocationNotesSheetPresenter(
-            viewModel = viewModel,
-            onDismiss = onLocationNotesSheetDismiss
         )
     }
     

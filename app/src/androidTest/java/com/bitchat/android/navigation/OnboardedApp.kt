@@ -1,6 +1,9 @@
 package com.bitchat.android.navigation
 
 import android.os.ParcelFileDescriptor
+import android.view.KeyEvent
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -14,6 +17,7 @@ import com.bitchat.android.MainViewModel
 import com.bitchat.android.R
 import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionManager
+import androidx.navigation3.runtime.NavKey
 
 internal typealias MainActivityRule =
     AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>
@@ -120,5 +124,39 @@ private fun MainActivityRule.onboardingState(): OnboardingState {
 
 internal fun MainActivityRule.pressBack() {
     runOnUiThread { activity.onBackPressedDispatcher.onBackPressed() }
+    waitForIdle()
+}
+
+/**
+ * Presses Back the way the device does, into whichever window has focus.
+ *
+ * pressBack calls the Activity's dispatcher, which a sheet never sees: a sheet
+ * is its own window and takes a real Back press before the Activity does.
+ */
+internal fun MainActivityRule.pressSystemBack(times: Int = 1) {
+    // No idling between presses: a second press that waits for the first to
+    // settle is two separate presses, not a quick double one.
+    repeat(times) {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+    }
+    waitForIdle()
+}
+
+internal fun MainActivityRule.navigateTo(route: NavKey) {
+    runOnUiThread { activity.navigator.goTo(route) }
+    waitForIdle()
+}
+
+internal fun MainActivityRule.topOfStack(): NavKey? {
+    var top: NavKey? = null
+    runOnUiThread { top = activity.navigator.backStack.lastOrNull() }
+    return top
+}
+
+/** A bottom sheet announces itself to accessibility with a pane title. */
+internal val isSheet = SemanticsMatcher.keyIsDefined(SemanticsProperties.PaneTitle)
+
+internal fun MainActivityRule.awaitSheet() {
+    waitUntil(timeoutMillis = 5_000) { onAllNodes(isSheet).fetchSemanticsNodes().isNotEmpty() }
     waitForIdle()
 }

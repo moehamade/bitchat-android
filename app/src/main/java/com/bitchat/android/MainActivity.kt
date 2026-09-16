@@ -42,6 +42,7 @@ import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.ChatScreen
+import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsSheet
 import com.bitchat.android.ui.OrientationAwareActivity
@@ -57,7 +58,9 @@ import com.bitchat.android.navigation.AppNavigator
 import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
 import com.bitchat.android.navigation.EntryProviderInstaller
+import com.bitchat.android.navigation.LocationNotesRoute
 import com.bitchat.android.navigation.OnboardingRoute
+import com.bitchat.android.navigation.SheetSceneStrategy
 import com.bitchat.android.navigation.rootRouteFor
 import com.bitchat.android.services.VerificationService
 import dagger.hilt.android.AndroidEntryPoint
@@ -222,12 +225,20 @@ class MainActivity : OrientationAwareActivity() {
                         }
                     }
 
+                    val sheetSceneStrategy = remember { SheetSceneStrategy() }
                     val entries: EntryProviderInstaller = {
                         entry<OnboardingRoute> { OnboardingFlowScreen(onboardingModifier) }
                         entry<ChatRoute> {
                             ChatScreen(
                                 viewModel = chatViewModel,
-                                onShowAbout = { navigator.goTo(AboutRoute) }
+                                onShowAbout = { navigator.goTo(AboutRoute) },
+                                onShowLocationNotes = { navigator.goTo(LocationNotesRoute) },
+                            )
+                        }
+                        entry<LocationNotesRoute>(metadata = SheetSceneStrategy.sheet()) {
+                            LocationNotesSheetPresenter(
+                                viewModel = chatViewModel,
+                                onDismiss = { navigator.popTo(LocationNotesRoute, inclusive = true) },
                             )
                         }
                         entry<AboutRoute> {
@@ -259,6 +270,7 @@ class MainActivity : OrientationAwareActivity() {
                             entryInstallers = setOf(entries),
                             onExit = { finish() },
                             modifier = Modifier.fillMaxSize(),
+                            sceneStrategies = listOf(sheetSceneStrategy),
                         )
                     }
 

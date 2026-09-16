@@ -25,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.bitchat.android.core.ui.component.sheet.BitchatBottomSheet
 import com.bitchat.android.core.ui.component.sheet.BitchatSheetTopBar
 import com.bitchat.android.core.ui.component.sheet.BitchatSheetTitle
 import com.bitchat.android.geohash.GeohashChannelLevel
@@ -116,112 +115,107 @@ fun LocationNotesSheet(
         }
     }
 
-    BitchatBottomSheet(
-        onDismissRequest = onDismiss,
-        modifier = modifier,
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(top = 64.dp, bottom = 20.dp)
-            ) {
-                item(key = "notes_header") {
-                    LocationNotesHeader(
-                        locationName = displayLocationName,
-                        state = state,
-                        accentGreen = accentGreen,
-                    )
-                }
+    Box(modifier = modifier.fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 64.dp, bottom = 20.dp)
+        ) {
+            item(key = "notes_header") {
+                LocationNotesHeader(
+                    locationName = displayLocationName,
+                    state = state,
+                    accentGreen = accentGreen,
+                )
+            }
 
-                // Notes content (matches iOS notesContent)
-                when {
-                    state == LocationNotesManager.State.NO_RELAYS -> {
-                        item {
-                            NoRelaysRow(
-                                onRetry = { notesManager.refresh() }
-                            )
-                        }
-                    }
-                    state == LocationNotesManager.State.LOADING && !initialLoadComplete -> {
-                        item {
-                            LoadingRow()
-                        }
-                    }
-                    notes.isEmpty() -> {
-                        item {
-                            EmptyRow()
-                        }
-                    }
-                    else -> {
-                        items(notes, key = { it.id }) { note ->
-                            NoteRow(note = note)
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+            // Notes content (matches iOS notesContent)
+            when {
+                state == LocationNotesManager.State.NO_RELAYS -> {
+                    item {
+                        NoRelaysRow(
+                            onRetry = { notesManager.refresh() }
+                        )
                     }
                 }
-
-                // Error row (matches iOS errorRow)
-                errorMessage?.let { error ->
-                    if (state != LocationNotesManager.State.NO_RELAYS) {
-                        item {
-                            ErrorRow(
-                                message = error,
-                                onDismiss = { notesManager.clearError() }
-                            )
-                        }
+                state == LocationNotesManager.State.LOADING && !initialLoadComplete -> {
+                    item {
+                        LoadingRow()
+                    }
+                }
+                notes.isEmpty() -> {
+                    item {
+                        EmptyRow()
+                    }
+                }
+                else -> {
+                    items(notes, key = { it.id }) { note ->
+                        NoteRow(note = note)
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
             }
 
-            // TopBar (animated)
-            BitchatSheetTopBar(
-                onClose = onDismiss,
-                modifier = Modifier.align(Alignment.TopCenter),
-                title = {
-                    BitchatSheetTitle(
-                        text = pluralStringResource(
-                            id = R.plurals.location_notes_title,
-                            count = count,
-                            geohash,
-                            count
+            // Error row (matches iOS errorRow)
+            errorMessage?.let { error ->
+                if (state != LocationNotesManager.State.NO_RELAYS) {
+                    item {
+                        ErrorRow(
+                            message = error,
+                            onDismiss = { notesManager.clearError() }
                         )
-                    )
+                    }
                 }
-            )
+            }
+        }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-            ){
-                Column {
-                    // Divider before input (matches iOS overlay)
-                    HorizontalDivider(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
-                        thickness = 1.dp
+        // TopBar (animated)
+        BitchatSheetTopBar(
+            onClose = onDismiss,
+            modifier = Modifier.align(Alignment.TopCenter),
+            title = {
+                BitchatSheetTitle(
+                    text = pluralStringResource(
+                        id = R.plurals.location_notes_title,
+                        count = count,
+                        geohash,
+                        count
                     )
+                )
+            }
+        )
 
-                    // Input section (matches iOS inputSection)
-                    LocationNotesInputSection(
-                        draft = draft,
-                        onDraftChange = { draft = it },
-                        sendButtonEnabled = sendButtonEnabled,
-                        accentGreen = accentGreen,
-                        nickname = nickname,
-                        onSend = {
-                            val content = draft.trim()
-                            if (content.isNotEmpty()) {
-                                notesManager.send(content, nickname)
-                                draft = ""
-                            }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+        ){
+            Column {
+                // Divider before input (matches iOS overlay)
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                    thickness = 1.dp
+                )
+
+                // Input section (matches iOS inputSection)
+                LocationNotesInputSection(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    sendButtonEnabled = sendButtonEnabled,
+                    accentGreen = accentGreen,
+                    nickname = nickname,
+                    onSend = {
+                        val content = draft.trim()
+                        if (content.isNotEmpty()) {
+                            notesManager.send(content, nickname)
+                            draft = ""
                         }
-                    )
-                }
+                    }
+                )
             }
         }
     }
