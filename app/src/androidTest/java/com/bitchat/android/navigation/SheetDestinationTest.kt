@@ -94,6 +94,26 @@ class SheetDestinationTest {
         rule.waitUntil(timeoutMillis = 5_000) { rule.topOfStack() == ChatRoute }
     }
 
+    /**
+     * A key with arguments goes through the saved-state encoder as a data
+     * class rather than an object, which only restoring it exercises.
+     */
+    @Test
+    fun aSheetWithArgumentsSurvivesActivityRecreation() {
+        rule.awaitChat()
+        val route = ChatUserRoute(nickname = "someone", messageId = null)
+        rule.navigateTo(route)
+        rule.awaitSheet()
+
+        rule.activityRule.scenario.recreate()
+
+        rule.awaitSheet()
+        assertEquals(route, rule.topOfStack())
+
+        rule.pressSystemBack()
+        rule.waitUntil(timeoutMillis = 5_000) { rule.topOfStack() == ChatRoute }
+    }
+
     private fun sheetIsShowing(): Boolean =
         rule.onAllNodes(isSheet).fetchSemanticsNodes().isNotEmpty()
 

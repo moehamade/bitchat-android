@@ -37,6 +37,17 @@ data object AboutRoute : NavKey
 data object LocationNotesRoute : NavKey
 
 /**
+ * Actions on a user, shown as a sheet over chat.
+ *
+ * [messageId] names the message that was long-pressed, not the message
+ * itself: a key is saved to a Bundle, and message text has no business there.
+ * The sheet looks the message up and offers only user actions when it is
+ * gone.
+ */
+@Serializable
+data class ChatUserRoute(val nickname: String, val messageId: String?) : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

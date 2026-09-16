@@ -43,6 +43,7 @@ import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.AppForegroundEffect
 import com.bitchat.android.ui.ChatScreen
+import com.bitchat.android.ui.ChatUserSheet
 import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsSheet
@@ -58,6 +59,7 @@ import com.bitchat.android.navigation.AboutRoute
 import com.bitchat.android.navigation.AppNavigator
 import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
+import com.bitchat.android.navigation.ChatUserRoute
 import com.bitchat.android.navigation.EntryProviderInstaller
 import com.bitchat.android.navigation.LocationNotesRoute
 import com.bitchat.android.navigation.OnboardingRoute
@@ -235,6 +237,17 @@ class MainActivity : OrientationAwareActivity() {
                                 viewModel = chatViewModel,
                                 onShowAbout = { navigator.goTo(AboutRoute) },
                                 onShowLocationNotes = { navigator.goTo(LocationNotesRoute) },
+                                onShowChatUser = { nickname, messageId ->
+                                    navigator.goTo(ChatUserRoute(nickname, messageId))
+                                },
+                            )
+                        }
+                        entry<ChatUserRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
+                            ChatUserSheet(
+                                onDismiss = { navigator.popTo(route, inclusive = true) },
+                                targetNickname = route.nickname,
+                                messageId = route.messageId,
+                                viewModel = chatViewModel,
                             )
                         }
                         entry<LocationNotesRoute>(metadata = SheetSceneStrategy.sheet()) {

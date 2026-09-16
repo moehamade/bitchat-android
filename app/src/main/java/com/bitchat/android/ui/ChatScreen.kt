@@ -38,7 +38,6 @@ import com.bitchat.android.R
 import com.bitchat.android.geohash.ChannelID
 import com.bitchat.android.geohash.GeohashChannelLevel
 import com.bitchat.android.geohash.LocationChannelManager
-import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.nostr.LocationNotesManager
 import com.bitchat.android.nostr.NearbyNotesController
 import com.bitchat.android.ui.media.FullScreenImageViewer
@@ -61,6 +60,7 @@ fun ChatScreen(
     // About as a sheet instead of navigating to the route.
     onShowAbout: () -> Unit,
     onShowLocationNotes: () -> Unit,
+    onShowChatUser: (nickname: String, messageId: String) -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -91,9 +91,6 @@ fun ChatScreen(
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
-    var showUserSheet by remember { mutableStateOf(false) }
-    var selectedUserForSheet by remember { mutableStateOf("") }
-    var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
     var viewerImagePaths by remember { mutableStateOf(emptyList<String>()) }
     var initialViewerIndex by remember { mutableStateOf(0) }
@@ -313,9 +310,7 @@ fun ChatScreen(
                     // Message long press - open user action sheet with message context
                     // Extract base nickname from message sender (contains all necessary info)
                     val (baseName, _) = splitSuffix(message.sender)
-                    selectedUserForSheet = baseName
-                    selectedMessageForSheet = message
-                    showUserSheet = true
+                    onShowChatUser(baseName, message.id)
                 },
                 onCancelTransfer = { msg ->
                     viewModel.cancelMediaSend(msg.id)
@@ -506,13 +501,6 @@ fun ChatScreen(
             showLocationChannelsSheet = false
             onShowLocationNotes()
         },
-        showUserSheet = showUserSheet,
-        onUserSheetDismiss = { 
-            showUserSheet = false
-            selectedMessageForSheet = null // Reset message when dismissing
-        },
-        selectedUserForSheet = selectedUserForSheet,
-        selectedMessageForSheet = selectedMessageForSheet,
         viewModel = viewModel,
         showVerificationSheet = showVerificationSheet,
         onVerificationSheetDismiss = viewModel::hideVerificationSheet,
@@ -787,10 +775,6 @@ private fun ChatDialogs(
     showLocationChannelsSheet: Boolean,
     onLocationChannelsSheetDismiss: () -> Unit,
     onLocationNotesFromChannelsClick: () -> Unit,
-    showUserSheet: Boolean,
-    onUserSheetDismiss: () -> Unit,
-    selectedUserForSheet: String,
-    selectedMessageForSheet: BitchatMessage?,
     viewModel: ChatViewModel,
     showVerificationSheet: Boolean,
     onVerificationSheetDismiss: () -> Unit,
@@ -821,16 +805,6 @@ private fun ChatDialogs(
         )
     }
     
-    // User action sheet
-    if (showUserSheet) {
-        ChatUserSheet(
-            isPresented = showUserSheet,
-            onDismiss = onUserSheetDismiss,
-            targetNickname = selectedUserForSheet,
-            selectedMessage = selectedMessageForSheet,
-            viewModel = viewModel
-        )
-    }
     // MeshPeerList sheet (network view)
     if (showMeshPeerListSheet){
         MeshPeerListSheet(
