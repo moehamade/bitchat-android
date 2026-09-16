@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelProvider
+import androidx.navigation3.runtime.NavKey
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.bitchat.android.MainActivity
@@ -17,7 +18,6 @@ import com.bitchat.android.MainViewModel
 import com.bitchat.android.R
 import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionManager
-import androidx.navigation3.runtime.NavKey
 
 internal typealias MainActivityRule =
     AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>
@@ -147,10 +147,12 @@ internal fun MainActivityRule.navigateTo(route: NavKey) {
     waitForIdle()
 }
 
-internal fun MainActivityRule.topOfStack(): NavKey? {
-    var top: NavKey? = null
-    runOnUiThread { top = activity.navigator.backStack.lastOrNull() }
-    return top
+internal fun MainActivityRule.topOfStack(): NavKey? = backStack().lastOrNull()
+
+internal fun MainActivityRule.backStack(): List<NavKey> {
+    var stack: List<NavKey> = emptyList()
+    runOnUiThread { stack = activity.navigator.backStack.toList() }
+    return stack
 }
 
 /** A bottom sheet announces itself to accessibility with a pane title. */

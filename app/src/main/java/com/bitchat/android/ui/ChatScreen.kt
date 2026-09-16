@@ -62,6 +62,7 @@ fun ChatScreen(
     onShowLocationNotes: () -> Unit,
     onShowChatUser: (nickname: String, messageId: String) -> Unit,
     onShowVerificationFromPeerList: () -> Unit,
+    onShowLocationChannels: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -90,7 +91,6 @@ fun ChatScreen(
     var messageText by rememberComposerText(selectedPrivatePeer, viewModel::conversationDraft)
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
-    var showLocationChannelsSheet by remember { mutableStateOf(false) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
     var viewerImagePaths by remember { mutableStateOf(emptyList<String>()) }
     var initialViewerIndex by remember { mutableStateOf(0) }
@@ -419,7 +419,7 @@ fun ChatScreen(
             onSidebarToggle = { viewModel.showMeshPeerList() },
             onShowAppInfo = onShowAbout,
             onPanicClear = { viewModel.panicClearAllData() },
-            onLocationChannelsClick = { showLocationChannelsSheet = true },
+            onLocationChannelsClick = onShowLocationChannels,
             onLocationNotesClick = {
                 nearbyNotesController.reveal()
                 onShowLocationNotes()
@@ -494,12 +494,6 @@ fun ChatScreen(
             viewModel.dismissPasswordPrompt()
             showPasswordDialog = false
             passwordInput = ""
-        },
-        showLocationChannelsSheet = showLocationChannelsSheet,
-        onLocationChannelsSheetDismiss = { showLocationChannelsSheet = false },
-        onLocationNotesFromChannelsClick = {
-            showLocationChannelsSheet = false
-            onShowLocationNotes()
         },
         viewModel = viewModel,
         onShowVerificationFromPeerList = onShowVerificationFromPeerList,
@@ -771,9 +765,6 @@ private fun ChatDialogs(
     onPasswordChange: (String) -> Unit,
     onPasswordConfirm: () -> Unit,
     onPasswordDismiss: () -> Unit,
-    showLocationChannelsSheet: Boolean,
-    onLocationChannelsSheetDismiss: () -> Unit,
-    onLocationNotesFromChannelsClick: () -> Unit,
     viewModel: ChatViewModel,
     onShowVerificationFromPeerList: () -> Unit,
     showSecurityVerificationSheet: Boolean,
@@ -793,16 +784,6 @@ private fun ChatDialogs(
         onDismiss = onPasswordDismiss
     )
 
-    // Location channels sheet
-    if (showLocationChannelsSheet) {
-        LocationChannelsSheet(
-            isPresented = showLocationChannelsSheet,
-            onDismiss = onLocationChannelsSheetDismiss,
-            onLocationNotesClick = onLocationNotesFromChannelsClick,
-            viewModel = viewModel
-        )
-    }
-    
     // MeshPeerList sheet (network view)
     if (showMeshPeerListSheet){
         MeshPeerListSheet(

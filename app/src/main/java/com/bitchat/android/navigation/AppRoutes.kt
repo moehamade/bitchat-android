@@ -59,6 +59,13 @@ data class ChatUserRoute(val nickname: String, val messageId: String?) : NavKey
 data class VerificationRoute(val peerID: String?, val reopenPeerList: Boolean) : NavKey
 
 /**
+ * Location channels, a full-screen destination: it launches the geohash picker
+ * for a result.
+ */
+@Serializable
+data object LocationChannelsRoute : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

@@ -44,6 +44,7 @@ import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.AppForegroundEffect
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatUserSheet
+import com.bitchat.android.ui.LocationChannelsScreen
 import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.VerificationScreen
 import com.bitchat.android.ui.ChatViewModel
@@ -62,6 +63,7 @@ import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
 import com.bitchat.android.navigation.ChatUserRoute
 import com.bitchat.android.navigation.EntryProviderInstaller
+import com.bitchat.android.navigation.LocationChannelsRoute
 import com.bitchat.android.navigation.LocationNotesRoute
 import com.bitchat.android.navigation.OnboardingRoute
 import com.bitchat.android.navigation.SheetSceneStrategy
@@ -250,6 +252,16 @@ class MainActivity : OrientationAwareActivity() {
                                         )
                                     )
                                 },
+                                onShowLocationChannels = { navigator.goTo(LocationChannelsRoute) },
+                            )
+                        }
+                        entry<LocationChannelsRoute> {
+                            LocationChannelsScreen(
+                                onClose = { navigator.popTo(LocationChannelsRoute, inclusive = true) },
+                                // Swaps channels for notes rather than stacking them, so
+                                // Back from notes returns to chat as it always has.
+                                onShowLocationNotes = { navigator.replaceCurrent(LocationNotesRoute) },
+                                viewModel = chatViewModel,
                             )
                         }
                         entry<VerificationRoute> { route ->
