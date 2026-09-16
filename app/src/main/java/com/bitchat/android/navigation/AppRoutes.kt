@@ -66,6 +66,13 @@ data class VerificationRoute(val peerID: String?, val reopenPeerList: Boolean) :
 data object LocationChannelsRoute : NavKey
 
 /**
+ * Debug settings, a full-screen destination pushed on top of About, whose
+ * Settings tab is its only entry point.
+ */
+@Serializable
+data object DebugSettingsRoute : NavKey
+
+/**
  * The destination that should be at the root for a given onboarding state.
  *
  * CHECKING and INITIALIZING map to chat, matching the behaviour this replaced:

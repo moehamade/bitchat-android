@@ -48,7 +48,7 @@ import com.bitchat.android.ui.LocationChannelsScreen
 import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.VerificationScreen
 import com.bitchat.android.ui.ChatViewModel
-import com.bitchat.android.ui.debug.DebugSettingsSheet
+import com.bitchat.android.ui.debug.DebugSettingsScreen
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
 import com.bitchat.android.wifiaware.WifiAwareController
@@ -62,6 +62,7 @@ import com.bitchat.android.navigation.AppNavigator
 import com.bitchat.android.navigation.BitchatNavDisplay
 import com.bitchat.android.navigation.ChatRoute
 import com.bitchat.android.navigation.ChatUserRoute
+import com.bitchat.android.navigation.DebugSettingsRoute
 import com.bitchat.android.navigation.EntryProviderInstaller
 import com.bitchat.android.navigation.LocationChannelsRoute
 import com.bitchat.android.navigation.LocationNotesRoute
@@ -297,21 +298,15 @@ class MainActivity : OrientationAwareActivity() {
                             )
                         }
                         entry<AboutRoute> {
-                            // Debug is still a sheet, and About's Settings tab is
-                            // its only entry point, so its host moves here with
-                            // About. It converts to a route in a later plan.
-                            var showDebug by rememberSaveable { mutableStateOf(false) }
                             AboutScreen(
                                 onClose = { navigator.goBack() },
-                                onShowDebug = { showDebug = true }
+                                onShowDebug = { navigator.goTo(DebugSettingsRoute) }
                             )
-                            if (showDebug) {
-                                DebugSettingsSheet(
-                                    isPresented = true,
-                                    onDismiss = { showDebug = false },
-                                    meshService = chatViewModel.meshService
-                                )
-                            }
+                        }
+                        entry<DebugSettingsRoute> {
+                            DebugSettingsScreen(
+                                onClose = { navigator.popTo(DebugSettingsRoute, inclusive = true) }
+                            )
                         }
                     }
 
