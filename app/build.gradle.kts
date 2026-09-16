@@ -212,6 +212,11 @@ dependencies {
     // test classpath already resolves. Removing this breaks every device test.
     androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // Declares the empty ComponentActivity that createComposeRule launches. It
+    // has to be in the app under test: added to androidTest it lands in the
+    // test APK, which runs in another process, and every such test fails to
+    // start. Debug only, so release manifests are unchanged.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // Robolectric resolves Android runtime jars itself (outside Gradle dependency resolution).
