@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -334,7 +335,9 @@ internal fun AboutContent(
 
     val colorScheme = MaterialTheme.colorScheme
     val palette = LocalBitchatPalette.current
-    var selectedTab by remember { mutableStateOf(AboutTab.Info) }
+    // Saveable: Debug is pushed over About from the Settings tab and replaces it rather than
+    // covering it, so a remembered tab reset to Info on the way back.
+    var selectedTab by rememberSaveable { mutableStateOf(AboutTab.Info) }
     val supportedLanguages = remember(context) {
         LanguagePreferenceManager.supportedLanguages(context)
     }
