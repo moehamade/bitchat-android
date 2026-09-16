@@ -6,10 +6,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.rememberLifecycleOwner
 import androidx.navigation3.runtime.NavEntry
@@ -67,20 +63,22 @@ private data class SheetScene(
 
     override val entries: List<NavEntry<NavKey>> = listOf(entry)
 
-    // Outside the constructor, so it is not part of equality. NavDisplay keeps
+    // Outside the constructor, so neither is part of equality. NavDisplay keeps
     // the scene instance it first composed for a key and removes that one, so
-    // the state set here is the state onRemove sees.
+    // what the content sets here is what onRemove sees, and the reverse.
     private var sheetState: SheetState? = null
+
+    // Set once the entry is on its way off the stack, from either end. A swipe,
+    // a scrim tap, Back and the sheet's own close button all end in
+    // onDismissRequest, and the sheet's window keeps taking Back presses while
+    // it slides down, whether the user dismissed it or code popped it. onBack
+    // pops, and finishes the app when there is nothing left to pop, so no press
+    // after the first dismissal may reach it.
+    private var dismissed = false
 
     override val content: @Composable () -> Unit = {
         val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         SideEffect { sheetState = state }
-        // A swipe, a scrim tap, Back and the sheet's own close button all end in
-        // onDismissRequest, and the sheet's window keeps taking Back presses
-        // while it animates out. onBack pops, and finishes the app when there is
-        // nothing left to pop, so a second press during the animation must not
-        // reach it: pop once per sheet.
-        var dismissed by remember { mutableStateOf(false) }
         // The sheet is its own window. Content that observes lifecycle, such as
         // a resume effect, follows the sheet rather than the Activity.
         val lifecycleOwner = rememberLifecycleOwner()
@@ -105,6 +103,7 @@ private data class SheetScene(
      * dismissed has already hidden, and hiding it again does nothing.
      */
     override suspend fun onRemove() {
+        dismissed = true
         runCatching { sheetState?.hide() }
     }
 }

@@ -1,8 +1,10 @@
 package com.bitchat.android.navigation
 
+import android.view.KeyEvent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.bitchat.android.MainActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -77,6 +79,25 @@ class SheetDestinationTest {
         rule.waitUntil(timeoutMillis = 5_000) { !sheetIsShowing() }
         assertEquals(ChatRoute, rule.topOfStack())
         assertFalse(rule.activity.isFinishing)
+    }
+
+    /**
+     * A sheet popped from code, such as by its Cancel button, stays on screen
+     * while it slides down, and its window still takes Back. That press must
+     * not pop again: only chat is left, so it would finish the app.
+     */
+    @Test
+    fun backWhileASheetSlidesAwayStaysInTheApp() {
+        rule.awaitChat()
+        rule.navigateTo(LocationNotesRoute)
+        rule.awaitSheet()
+
+        rule.runOnUiThread { rule.activity.navigator.goBack() }
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+
+        rule.waitUntil(timeoutMillis = 5_000) { !sheetIsShowing() }
+        assertFalse(rule.activity.isFinishing)
+        assertTrue(chatIsComposed())
     }
 
     @Test
