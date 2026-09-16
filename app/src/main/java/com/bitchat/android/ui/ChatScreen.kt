@@ -16,6 +16,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,7 +91,14 @@ fun ChatScreen(
 
     val showPasswordPrompt by viewModel.showPasswordPrompt.collectAsStateWithLifecycle()
 
-    var messageText by remember { mutableStateOf(TextFieldValue("")) }
+    // Saveable, so the unsent text outlives chat leaving composition: a destination pushed over
+    // chat replaces it rather than covering it. Keyed on the private peer, so switching
+    // conversations loads that conversation's stored draft instead.
+    var messageText by rememberSaveable(selectedPrivatePeer, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(
+            TextFieldValue(selectedPrivatePeer?.let(viewModel::conversationDraft).orEmpty())
+        )
+    }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
@@ -103,14 +111,6 @@ fun ChatScreen(
     var initialViewerIndex by remember { mutableStateOf(0) }
     var forceScrollToBottom by remember { mutableStateOf(false) }
     var isScrolledUp by remember { mutableStateOf(false) }
-
-    LaunchedEffect(selectedPrivatePeer) {
-        messageText = TextFieldValue(
-            selectedPrivatePeer
-                ?.let(viewModel::conversationDraft)
-                .orEmpty()
-        )
-    }
 
     // Show password dialog when needed
     LaunchedEffect(showPasswordPrompt) {
