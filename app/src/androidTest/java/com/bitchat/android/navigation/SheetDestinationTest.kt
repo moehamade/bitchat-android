@@ -65,6 +65,20 @@ class SheetDestinationTest {
         assertTrue(chatIsComposed())
     }
 
+    /** A pop that does not start in the sheet, such as a reset, still closes it. */
+    @Test
+    fun aSheetPoppedFromOutsideCloses() {
+        rule.awaitChat()
+        rule.navigateTo(LocationNotesRoute)
+        rule.awaitSheet()
+
+        rule.runOnUiThread { rule.activity.navigator.goBack() }
+
+        rule.waitUntil(timeoutMillis = 5_000) { !sheetIsShowing() }
+        assertEquals(ChatRoute, rule.topOfStack())
+        assertFalse(rule.activity.isFinishing)
+    }
+
     @Test
     fun aSheetSurvivesActivityRecreation() {
         rule.awaitChat()
