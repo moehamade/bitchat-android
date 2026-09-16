@@ -33,10 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.R
 import com.bitchat.android.geohash.ChannelID
@@ -135,33 +131,6 @@ fun ChatScreen(
             selectedLocationChannel is ChannelID.Mesh &&
             selectedPrivatePeer == null &&
             privateChatSheetPeer == null
-
-    val processLifecycleOwner = remember { ProcessLifecycleOwner.get() }
-    DisposableEffect(processLifecycleOwner, nearbyNotesController) {
-        val lifecycle = processLifecycleOwner.lifecycle
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) {
-                nearbyNotesController.updateAppForeground(true)
-                liveVoiceManager.setAppForeground(true)
-            }
-
-            override fun onStop(owner: LifecycleOwner) {
-                nearbyNotesController.updateAppForeground(false)
-                liveVoiceManager.setAppForeground(false)
-            }
-        }
-
-        lifecycle.addObserver(observer)
-        nearbyNotesController.updateAppForeground(
-            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
-        )
-
-        onDispose {
-            lifecycle.removeObserver(observer)
-            nearbyNotesController.updateAppForeground(false)
-            liveVoiceManager.setAppForeground(false)
-        }
-    }
 
     LaunchedEffect(isMeshTimeline, privateChatSheetPeer, selectedPrivatePeer) {
         when {

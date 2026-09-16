@@ -41,6 +41,7 @@ import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
+import com.bitchat.android.ui.AppForegroundEffect
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.ChatViewModel
@@ -183,6 +184,7 @@ class MainActivity : OrientationAwareActivity() {
         
         setContent {
             BitchatTheme {
+                AppForegroundEffect()
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
