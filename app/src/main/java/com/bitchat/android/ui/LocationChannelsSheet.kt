@@ -653,6 +653,24 @@ fun LocationChannelsScreen(
         }
     }
 
+    // The notes row shows how many notes are nearby, which makes this a nearby-notes surface.
+    // While channels opened as a sheet, chat stayed composed beneath it and held the
+    // subscription; as a destination it replaces chat, which releases that hold and clears the
+    // notes, so the screen holds its own and keeps availability current. A hold is not consent:
+    // nothing subscribes until notes have been revealed.
+    val buildingGeohash = availableChannels
+        .firstOrNull { it.level == GeohashChannelLevel.BUILDING }
+        ?.geohash
+    DisposableEffect(buildingGeohash, locationServicesEnabled, permissionState, nearbyNotesController) {
+        nearbyNotesController.updateAvailability(
+            locationEnabled = locationServicesEnabled,
+            locationAuthorized = permissionState == LocationChannelManager.PermissionState.AUTHORIZED,
+            buildingGeohash = buildingGeohash,
+        )
+        nearbyNotesController.activate()
+        onDispose { nearbyNotesController.deactivate() }
+    }
+
     // Sampling management: update sampling when channels/bookmarks change
     LaunchedEffect(
         availableChannels,
