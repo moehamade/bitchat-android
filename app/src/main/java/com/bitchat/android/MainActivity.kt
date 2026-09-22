@@ -336,7 +336,6 @@ class MainActivity : OrientationAwareActivity() {
                                 onDismiss = { navigator.popTo(route, inclusive = true) },
                                 targetNickname = route.nickname,
                                 messageId = route.messageId,
-                                viewModel = chatViewModel,
                             )
                         }
                         entry<LocationNotesRoute>(metadata = SheetSceneStrategy.sheet()) {

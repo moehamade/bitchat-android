@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.ui.theme.BASE_FONT_SIZE
@@ -31,15 +32,20 @@ fun ChatUserSheet(
     onDismiss: () -> Unit,
     targetNickname: String,
     messageId: String?,
-    viewModel: ChatViewModel,
     modifier: Modifier = Modifier
 ) {
-    val clipboardManager = LocalClipboardManager.current
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
-    val channelMessages by viewModel.channelMessages.collectAsStateWithLifecycle()
-    val selectedMessage = remember(messageId, messages, channelMessages) {
-        timelineMessage(messageId, messages, channelMessages)
+    val viewModel = hiltViewModel<ChatUserViewModel, ChatUserViewModel.Factory>(
+        creationCallback = { factory -> factory.create(targetNickname, messageId) }
+    )
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedMessage = uiState.message
+    // Every action closes the sheet. Opening a private chat has already taken
+    // its place by then, and the close pops by key, so it does nothing.
+    val act: (ChatUserAction) -> Unit = { action ->
+        viewModel.onAction(action)
+        onDismiss()
     }
+    val clipboardManager = LocalClipboardManager.current
 
     val colorScheme = MaterialTheme.colorScheme
     val palette = LocalBitchatPalette.current
@@ -92,31 +98,14 @@ fun ChatUserSheet(
             }
 
             // Only show user actions for other users' messages or when no message is selected
-            if (selectedMessage?.sender != viewModel.nickname.value) {
+            if (uiState.showUserActions) {
                 // Send private message action
                 item {
                     UserActionRow(
                         title = stringResource(R.string.action_private_message_title, targetNickname),
                         subtitle = stringResource(R.string.action_private_message_subtitle),
                         titleColor = standardPurple,
-                        onClick = {
-                            val selectedLocationChannel = viewModel.selectedLocationChannel.value
-                            if (selectedLocationChannel is com.bitchat.android.geohash.ChannelID.Location) {
-                                if (selectedMessage?.senderPeerID?.startsWith("nostr:") == true) {
-                                    val shortId = selectedMessage.senderPeerID!!.substring(6)
-                                    viewModel.startGeohashDMByShortId(shortId)
-                                } else {
-                                    viewModel.startGeohashDMByNickname(targetNickname)
-                                }
-                            } else {
-                                // Mesh chat
-                                val peerID = selectedMessage?.senderPeerID ?: viewModel.getPeerIDForNickname(targetNickname)
-                                if (peerID != null) {
-                                    viewModel.openPrivateChat(peerID)
-                                }
-                            }
-                            onDismiss()
-                        }
+                        onClick = { act(ChatUserAction.PrivateMessage) }
                     )
                 }
 
@@ -126,11 +115,7 @@ fun ChatUserSheet(
                         title = stringResource(R.string.action_slap_title, targetNickname),
                         subtitle = stringResource(R.string.action_slap_subtitle),
                         titleColor = standardBlue,
-                        onClick = {
-                            // Send slap command
-                            viewModel.sendMessage("/slap $targetNickname")
-                            onDismiss()
-                        }
+                        onClick = { act(ChatUserAction.Slap) }
                     )
                 }
 
@@ -140,11 +125,7 @@ fun ChatUserSheet(
                         title = stringResource(R.string.action_hug_title, targetNickname),
                         subtitle = stringResource(R.string.action_hug_subtitle),
                         titleColor = standardGreen,
-                        onClick = {
-                            // Send hug command
-                            viewModel.sendMessage("/hug $targetNickname")
-                            onDismiss()
-                        }
+                        onClick = { act(ChatUserAction.Hug) }
                     )
                 }
 
@@ -154,18 +135,7 @@ fun ChatUserSheet(
                         title = stringResource(R.string.action_block_title, targetNickname),
                         subtitle = stringResource(R.string.action_block_subtitle),
                         titleColor = standardRed,
-                        onClick = {
-                            // Check if we're in a geohash channel
-                            val selectedLocationChannel = viewModel.selectedLocationChannel.value
-                            if (selectedLocationChannel is com.bitchat.android.geohash.ChannelID.Location) {
-                                // Get user's nostr public key and add to geohash block list
-                                viewModel.blockUserInGeohash(targetNickname)
-                            } else {
-                                // Regular mesh blocking
-                                viewModel.sendMessage("/block $targetNickname")
-                            }
-                            onDismiss()
-                        }
+                        onClick = { act(ChatUserAction.Block) }
                     )
                 }
             }

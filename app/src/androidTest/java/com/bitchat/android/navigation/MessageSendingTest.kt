@@ -1,9 +1,12 @@
 package com.bitchat.android.navigation
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.bitchat.android.MainActivity
+import com.bitchat.android.R
 import com.bitchat.android.ui.ChatViewModel
 import org.junit.Assert.assertEquals
 import org.junit.BeforeClass
@@ -54,6 +57,22 @@ class MessageSendingTest {
 
         rule.waitUntil(timeoutMillis = 5_000) {
             timeline().any { it == "no one else is around right now." }
+        }
+    }
+
+    /** The chat user sheet sends through its own ViewModel and closes. */
+    @Test
+    fun hugFromTheChatUserSheetSendsTheActionAndCloses() {
+        rule.awaitChat()
+        rule.navigateTo(ChatUserRoute(nickname = "synthetic", messageId = null))
+        rule.awaitSheet()
+
+        rule.onNodeWithText(rule.activity.getString(R.string.action_hug_title, "synthetic"))
+            .performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) { rule.topOfStack() == ChatRoute }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            timeline().any { it.contains("hug") && it.contains("synthetic") }
         }
     }
 

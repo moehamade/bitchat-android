@@ -1333,27 +1333,8 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun startGeohashDMByNickname(nickname: String) {
-        geohashSession.startGeohashDMByNickname(nickname) { convKey ->
-            openPrivateChat(convKey)
-        }
-    }
-
-    fun startGeohashDMByShortId(shortId: String) {
-        geohashSession.startGeohashDMByShortId(shortId) { convKey ->
-            openPrivateChat(convKey)
-        }
-    }
-
     fun selectLocationChannel(channel: com.bitchat.android.geohash.ChannelID) {
         geohashSession.selectLocationChannel(channel)
-    }
-
-    /**
-     * Block a user in geohash channels by their nickname
-     */
-    fun blockUserInGeohash(targetNickname: String) {
-        geohashSession.blockUserInGeohash(targetNickname)
     }
 
     // MARK: - Navigation Management
