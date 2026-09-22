@@ -49,6 +49,7 @@ import com.bitchat.android.ui.LocationNotesSheetPresenter
 import com.bitchat.android.ui.MeshPeerListSheet
 import com.bitchat.android.ui.PrivateChatSheet
 import com.bitchat.android.ui.SecurityVerificationSheet
+import com.bitchat.android.ui.VerificationHandler
 import com.bitchat.android.ui.VerificationScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsScreen
@@ -112,6 +113,11 @@ class MainActivity : OrientationAwareActivity() {
 
     @Inject
     lateinit var locationChannelManager: LocationChannelManager
+
+    // The chat session's, shared with ChatViewModel; the verify deep link
+    // starts a QR verification through it.
+    @Inject
+    lateinit var verificationHandler: VerificationHandler
 
     private val forceFinishReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
@@ -324,7 +330,6 @@ class MainActivity : OrientationAwareActivity() {
                             VerificationScreen(
                                 peerID = route.peerID,
                                 onClose = close,
-                                viewModel = chatViewModel,
                             )
                         }
                         entry<ChatUserRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
@@ -1060,7 +1065,7 @@ class MainActivity : OrientationAwareActivity() {
         navigator.goTo(VerificationRoute(chatViewModel.selectedPrivateChatPeer.value))
         val qr = VerificationService.verifyScannedQR(uri.toString())
         if (qr != null) {
-            chatViewModel.beginQRVerification(qr)
+            verificationHandler.beginQRVerification(qr)
         }
     }
 

@@ -151,19 +151,6 @@ class ChatViewModel @Inject constructor(
         mediaSendingManager.cancelLegacyPrivateMedia(requestId)
     }
 
-    fun getCurrentNpub(): String? {
-        return try {
-            NostrIdentityBridge
-                .getCurrentNostrIdentity(getApplication())
-                ?.npub
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun buildMyQRString(nickname: String, npub: String?): String {
-        return VerificationService.buildMyQRString(nickname, npub) ?: ""
-    }
 
     // Transfer progress tracking
     private val transferMessageMap = mutableMapOf<String, String>()
@@ -369,8 +356,6 @@ class ChatViewModel @Inject constructor(
         get() = mesh
     val myPeerID: String
         get() = mesh.myPeerID
-
-    fun getMeshPeerFingerprint(peerID: String): String? = mesh.getPeerFingerprint(peerID)
 
     fun getMeshPeerInfo(peerID: String): com.bitchat.android.mesh.PeerInfo? = mesh.getPeerInfo(peerID)
 
@@ -1201,13 +1186,6 @@ class ChatViewModel @Inject constructor(
         return verifiedFingerprints.contains(fingerprint)
     }
 
-    fun unverifyFingerprint(peerID: String) {
-        verificationHandler.unverifyFingerprint(peerID)
-    }
-
-    fun beginQRVerification(qr: VerificationService.VerificationQR): Boolean {
-        return verificationHandler.beginQRVerification(qr)
-    }
 
     // MARK: - Debug and Troubleshooting
     
