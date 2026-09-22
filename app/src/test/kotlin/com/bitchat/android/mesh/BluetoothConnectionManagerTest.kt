@@ -19,7 +19,8 @@ class BluetoothConnectionManagerTest {
     fun setUp() {
         manager = BluetoothConnectionManager(
             RuntimeEnvironment.getApplication(),
-            "0011223344556677"
+            "0011223344556677",
+            BluetoothPermissionManager(RuntimeEnvironment.getApplication(), requireLocation = true)
         )
     }
 

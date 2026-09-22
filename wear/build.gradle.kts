@@ -77,7 +77,7 @@ composeCompiler {
 // materializes a filtered mirror into build/sharedSrc and that directory is added as a source
 // root. The app sources remain the single source of truth; extend the include list below (don't
 // copy files into wear/src) when the compiler reveals a missing transitive dependency.
-// Deliberately excluded: ui (except the DebugSettingsManager the mesh layer references),
+// Deliberately excluded: ui (except the debug settings the mesh layer references),
 // onboarding, nostr (except pure-Kotlin Bech32), net, geohash, wifi-aware, hotspot, voice
 // features, and the phone's foreground service.
 val sharedSourceIncludes = listOf(
@@ -105,6 +105,7 @@ val sharedSourceIncludes = listOf(
     "com/bitchat/android/features/voice/**",
     "com/bitchat/android/ui/debug/DebugSettingsManager.kt",
     "com/bitchat/android/ui/debug/DebugPreferenceManager.kt",
+    "com/bitchat/android/ui/debug/TransportToggles.kt",
     "com/bitchat/android/ui/NotificationTextUtils.kt",
     "com/bitchat/android/util/AppConstants.kt",
     "com/bitchat/android/util/ByteArrayExtensions.kt",
@@ -117,10 +118,6 @@ val sharedSourceExcludes = listOf(
     // (MeshCore-style) in M2 instead of reusing these.
     "com/bitchat/android/mesh/BluetoothMeshService.kt",
     "com/bitchat/android/mesh/UnifiedMeshService.kt",
-    // Phone permission policy additionally requires location (legacy BLE); the watch app
-    // declares Bluetooth permissions only, so it ships its own same-FQN variant in
-    // wear/src/main (Bluetooth-only check).
-    "com/bitchat/android/mesh/BluetoothPermissionManager.kt",
 )
 
 val syncSharedAppSources = tasks.register<Sync>("syncSharedAppSources") {

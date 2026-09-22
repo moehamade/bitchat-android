@@ -6,9 +6,16 @@ import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 
 /**
- * Handles all Bluetooth permission checking logic
+ * Handles all Bluetooth permission checking logic.
+ *
+ * [requireLocation] is the client's policy, not a default: the phone also requires
+ * ACCESS_COARSE/FINE_LOCATION for legacy BLE scanning, while the watch declares no location
+ * permissions (BLUETOOTH_SCAN with `neverForLocation` is enough on Wear OS).
  */
-class BluetoothPermissionManager(private val context: Context) {
+class BluetoothPermissionManager(
+    private val context: Context,
+    private val requireLocation: Boolean
+) {
     
     /**
      * Check if all required Bluetooth permissions are granted
@@ -29,10 +36,12 @@ class BluetoothPermissionManager(private val context: Context) {
             ))
         }
         
-        permissions.addAll(listOf(
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ))
+        if (requireLocation) {
+            permissions.addAll(listOf(
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ))
+        }
 
         return permissions.all { 
             ActivityCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED 

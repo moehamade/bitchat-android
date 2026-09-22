@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 class BluetoothConnectionManager(
     private val context: Context, 
     private val myPeerID: String,
+    private val permissionManager: BluetoothPermissionManager,
     private val fragmentManager: FragmentManager? = null
 ) {
     
@@ -36,7 +37,6 @@ class BluetoothConnectionManager(
     private val connectionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     // Component managers
-    private val permissionManager = BluetoothPermissionManager(context)
     private val connectionTracker = BluetoothConnectionTracker(connectionScope, powerManager)
     private val packetBroadcaster = BluetoothPacketBroadcaster(connectionScope, connectionTracker, fragmentManager, myPeerID)
     

@@ -62,6 +62,10 @@ class BitchatApplication : Application() {
             com.bitchat.android.wifiaware.WifiAwareController.initialize(this, enabled)
         } catch (_: Exception) { }
 
+        // Let the shared debug toggles reach this app's transports
+        com.bitchat.android.ui.debug.DebugSettingsManager.getInstance().transportToggles =
+            com.bitchat.android.service.MeshTransportToggles
+
         // Initialize Geohash Registries for persistence
         try {
             com.bitchat.android.nostr.GeohashAliasRegistry.initialize(this)

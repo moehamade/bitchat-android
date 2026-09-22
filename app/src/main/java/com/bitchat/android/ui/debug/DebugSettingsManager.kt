@@ -27,6 +27,10 @@ class DebugSettingsManager private constructor() {
         }
     }
     
+    /** Applies the transport master toggles; registered by the phone, absent on the watch. */
+    @Volatile
+    var transportToggles: TransportToggles? = null
+
     // Debug settings state
     private val _verboseLoggingEnabled = MutableStateFlow(false)
     val verboseLoggingEnabled: StateFlow<Boolean> = _verboseLoggingEnabled.asStateFlow()
@@ -286,7 +290,7 @@ class DebugSettingsManager private constructor() {
         _bleEnabled.value = enabled
         addDebugMessage(DebugMessage.SystemMessage(if (enabled) "🟢 BLE enabled" else "🔴 BLE disabled"))
         try {
-            com.bitchat.android.service.MeshServiceHolder.meshService?.setBleTransportEnabled(enabled)
+            transportToggles?.setBleEnabled(enabled)
         } catch (_: Exception) { }
     }
 
@@ -295,7 +299,7 @@ class DebugSettingsManager private constructor() {
         _wifiAwareEnabled.value = enabled
         addDebugMessage(DebugMessage.SystemMessage(if (enabled) "🟢 Wi‑Fi Aware enabled" else "🔴 Wi‑Fi Aware disabled"))
         try {
-            com.bitchat.android.wifiaware.WifiAwareController.setEnabled(enabled)
+            transportToggles?.setWifiAwareEnabled(enabled)
         } catch (_: Exception) { }
     }
 
