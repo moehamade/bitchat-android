@@ -62,9 +62,10 @@ and JVM tests in `src/test/`. Specifications are in `docs/`; tooling is in
 `app/` is the source of truth for shared mesh/protocol code, alongside
 `core/domain/`, which holds the domain models that Android library modules
 need (Gradle forbids a library module depending on an application module).
-`syncSharedAppSources` generates `wear/build/sharedSrc` from both trees using
-the include list in `wear/build.gradle.kts`. Extend that list; never copy
-shared Kotlin into `wear/src/` or edit generated `build/` content.
+`:wear` depends on `:core:domain` as a module. For the rest,
+`syncSharedAppSources` generates `wear/build/sharedSrc` from `app/` using the
+include list in `wear/build.gradle.kts`. Extend that list; never copy shared
+Kotlin into `wear/src/` or edit generated `build/` content.
 
 `core/navigation/` holds the Navigator, the NavDisplay host and the Hilt
 module that binds them. Routes stay in `app/`, because they name this app's

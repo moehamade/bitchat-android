@@ -231,6 +231,9 @@ class WearMeshService private constructor(private val context: Context) {
     private fun handleMessageReceived(
         message: com.bitchat.android.model.BitchatMessage
     ): Boolean = try {
+        // Read once: BitchatMessage comes from :core:domain, and Kotlin does not
+        // smart-cast a property declared in another module.
+        val channel = message.channel
         when {
             message.isPrivate -> {
                 val peer = message.senderPeerID ?: return false
@@ -238,8 +241,8 @@ class WearMeshService private constructor(private val context: Context) {
                 try { onPrivateMessage?.invoke(message) } catch (_: Exception) { }
                 true
             }
-            message.channel != null -> {
-                AppStateStore.addChannelMessage(message.channel, message)
+            channel != null -> {
+                AppStateStore.addChannelMessage(channel, message)
                 true
             }
             else -> {

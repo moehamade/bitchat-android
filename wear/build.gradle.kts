@@ -128,12 +128,6 @@ val syncSharedAppSources = tasks.register<Sync>("syncSharedAppSources") {
         include(sharedSourceIncludes)
         exclude(sharedSourceExcludes)
     }
-    // The model package lives in :core:domain, and the watch compiles those files
-    // from source, so the same globs have to be applied to both roots.
-    from("../core/domain/src/main/java") {
-        include(sharedSourceIncludes)
-        exclude(sharedSourceExcludes)
-    }
     into(layout.buildDirectory.dir("sharedSrc"))
 }
 
@@ -186,6 +180,9 @@ kotlin {
 }
 
 dependencies {
+    // The model types, as a module rather than copied source. :core:domain's minSdk
+    // is below the watch's, so it needs no copy of its own.
+    implementation(project(":core:domain"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
 
