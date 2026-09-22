@@ -2,12 +2,10 @@ package com.bitchat.android.ui
 
 import android.app.Application
 import android.util.Log
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import androidx.lifecycle.viewModelScope
 import com.bitchat.android.geohash.GeohashNostrPrivacyPolicy
 import com.bitchat.android.geohash.LiveLocationPrivacyGate
 import com.bitchat.android.nostr.GeohashMessageHandler
@@ -20,7 +18,10 @@ import com.bitchat.android.nostr.NostrSubscriptionManager
 import com.bitchat.android.nostr.PoWPreferenceManager
 import com.bitchat.android.nostr.GeohashAliasRegistry
 import com.bitchat.android.nostr.GeohashConversationRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,15 +29,29 @@ import java.util.Date
 import kotlinx.coroutines.isActive
 import java.util.UUID
 
-class GeohashViewModel(
-    application: Application,
+/**
+ * Geohash channels and DMs over Nostr for the chat session: channel
+ * switching, presence, participant sampling and sending.
+ *
+ * Provided by the session graph rather than built inside ChatViewModel, so
+ * screens can reach it. It was an AndroidViewModel that no ViewModelStore
+ * owned, which meant its viewModelScope was never cancelled; [scope] keeps
+ * that behaviour on purpose. Moving it to the session scope would cancel a
+ * geohash send still in flight when the Activity finishes, which is a
+ * messaging change and belongs in its own commit. ChatViewModel still calls
+ * [shutdownUiSubscriptions] when it is cleared.
+ */
+class GeohashSession(
+    private val application: Application,
     private val state: ChatState,
     private val messageManager: MessageManager,
     private val dataManager: DataManager,
     private val notificationManager: NotificationManager
-) : AndroidViewModel(application), DefaultLifecycleObserver {
+) : DefaultLifecycleObserver {
 
-    companion object { private const val TAG = "GeohashViewModel" }
+    companion object { private const val TAG = "GeohashSession" }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val repo = GeohashRepository(application, state, dataManager)
     private val uiSubscriptionOwner = "geohash-ui-${UUID.randomUUID()}"
@@ -47,7 +62,7 @@ class GeohashViewModel(
     private val geohashMessageHandler = GeohashMessageHandler(
         application = application,
         repo = repo,
-        scope = viewModelScope,
+        scope = scope,
         dataManager = dataManager,
         addChannelMessage = messageManager::addChannelMessage
     )
@@ -89,14 +104,14 @@ class GeohashViewModel(
             ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         }
         try {
-            locationChannelManager = com.bitchat.android.geohash.LocationChannelManager.getInstance(getApplication())
-            viewModelScope.launch {
+            locationChannelManager = com.bitchat.android.geohash.LocationChannelManager.getInstance(application)
+            scope.launch {
                 locationChannelManager?.selectedChannel?.collect { channel ->
                     state.setSelectedLocationChannel(channel)
                     switchLocationChannel(channel)
                 }
             }
-            viewModelScope.launch {
+            scope.launch {
                 locationChannelManager?.teleported?.collect { teleported ->
                     state.setIsTeleported(teleported)
                 }
@@ -117,14 +132,14 @@ class GeohashViewModel(
         activeChannelGeohash = null
         geoTimer?.cancel()
         geoTimer = null
-        try { NostrIdentityBridge.clearAllAssociations(getApplication()) } catch (_: Exception) {}
+        try { NostrIdentityBridge.clearAllAssociations(application) } catch (_: Exception) {}
         NostrBackgroundRuntime.resetSubscriptions()
-        try { com.bitchat.android.nostr.NostrRelayManager.getInstance(getApplication()).clearAllOnPanic() } catch (_: Exception) {}
+        try { com.bitchat.android.nostr.NostrRelayManager.getInstance(application).clearAllOnPanic() } catch (_: Exception) {}
         try { com.bitchat.android.nostr.LocationNotesManager.getInstance().stop() } catch (_: Exception) {}
     }
 
     fun sendGeohashMessage(content: String, channel: com.bitchat.android.geohash.GeohashChannel, myPeerID: String, nickname: String?) {
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val canUseChannel = locationChannelManager
                     ?.canUseSelectedLocationChannel(channel) == true
@@ -152,7 +167,7 @@ class GeohashViewModel(
                 messageManager.addChannelMessage("geo:${channel.geohash}", localMsg)
                 val identity = NostrIdentityBridge.deriveIdentity(
                     forGeohash = channel.geohash,
-                    context = getApplication()
+                    context = application
                 )
                 val teleported = locationChannelManager?.teleported?.value
                     ?: state.isTeleported.value
@@ -163,7 +178,7 @@ class GeohashViewModel(
                     nickname,
                     teleported
                 )
-                val relayManager = NostrRelayManager.getInstance(getApplication())
+                val relayManager = NostrRelayManager.getInstance(application)
                 relayManager.sendEventToGeohash(
                     event,
                     channel.geohash,
@@ -360,7 +375,7 @@ class GeohashViewModel(
                 try { messageManager.clearChannelUnreadCount("geo:${channel.channel.geohash}") } catch (_: Exception) { }
 
                 try {
-                    val identity = NostrIdentityBridge.deriveIdentity(channel.channel.geohash, getApplication())
+                    val identity = NostrIdentityBridge.deriveIdentity(channel.channel.geohash, application)
                     // We don't update participant here anymore; presence loop handles it via Kind 20001
                     val teleported = locationChannelManager?.teleported?.value
                         ?: state.isTeleported.value
@@ -406,17 +421,12 @@ class GeohashViewModel(
     }
 
     private fun startGeoParticipantsTimer() {
-        geoTimer = viewModelScope.launch {
+        geoTimer = scope.launch {
             while (repo.getCurrentGeohash() != null) {
                 delay(30000)
                 repo.refreshGeohashPeople()
             }
         }
-    }
-
-    override fun onCleared() {
-        shutdownUiSubscriptions()
-        super.onCleared()
     }
 
     fun shutdownUiSubscriptions() {

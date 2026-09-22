@@ -102,6 +102,7 @@ class ChatViewModel @Inject constructor(
     private val verificationHandler: VerificationHandler,
     private val mediaSendingManager: MediaSendingManager,
     private val meshDelegateHandler: MeshDelegateHandler,
+    val geohashSession: GeohashSession,
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Replaced after a panic clear, so read through the session on every use.
@@ -164,19 +165,6 @@ class ChatViewModel @Inject constructor(
         get() = geohashBookmarksStoreLazy.get()
     private val nostrTransport: NostrTransport get() = nostrTransportLazy.get()
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
-
-    // New Geohash architecture ViewModel (replaces God object service usage in UI path)
-    val geohashViewModel = GeohashViewModel(
-        application = application,
-        state = state,
-        messageManager = messageManager,
-        dataManager = dataManager,
-        notificationManager = notificationManager
-    )
-
-
-
-
 
     val messages: StateFlow<List<BitchatMessage>> = state.messages
     val connectedPeers: StateFlow<List<String>> = state.connectedPeers
@@ -552,7 +540,7 @@ class ChatViewModel @Inject constructor(
         }
         
         // Initialize new geohash architecture
-        geohashViewModel.initialize()
+        geohashSession.initialize()
 
         // Initialize favorites persistence service
         com.bitchat.android.favorites.FavoritesPersistenceService.initialize(getApplication())
@@ -589,7 +577,7 @@ class ChatViewModel @Inject constructor(
             }
             favoriteRelationshipListenerRegistered = false
         }
-        geohashViewModel.shutdownUiSubscriptions()
+        geohashSession.shutdownUiSubscriptions()
         com.bitchat.android.services.AppStateStore.setSelectedPrivateChatPeer(null)
         // Note: Mesh service lifecycle is now managed by MainActivity
     }
@@ -606,7 +594,7 @@ class ChatViewModel @Inject constructor(
      * Ensure Nostr DM subscription for a geohash conversation key if known
      */
     private fun ensureGeohashDMSubscriptionIfNeeded(convKey: String) {
-        geohashViewModel.ensureGeohashDMSubscriptionForConversation(convKey)
+        geohashSession.ensureGeohashDMSubscriptionForConversation(convKey)
     }
 
     // MARK: - Channel Management (delegated)
@@ -888,7 +876,7 @@ class ChatViewModel @Inject constructor(
             commandProcessor.processCommand(content, mesh, mesh.myPeerID, { messageContent, mentions, channel ->
                 if (selectedLocationForCommand is com.bitchat.android.geohash.ChannelID.Location) {
                     // Route command-generated public messages via Nostr in geohash channels
-                    geohashViewModel.sendGeohashMessage(
+                    geohashSession.sendGeohashMessage(
                         messageContent,
                         selectedLocationForCommand.channel,
                         mesh.myPeerID,
@@ -967,7 +955,7 @@ class ChatViewModel @Inject constructor(
             val selectedLocationChannel = state.selectedLocationChannel.value
             if (selectedLocationChannel is com.bitchat.android.geohash.ChannelID.Location) {
                 // Send to geohash channel via Nostr ephemeral event
-                geohashViewModel.sendGeohashMessage(content, selectedLocationChannel.channel, mesh.myPeerID, state.getNicknameValue())
+                geohashSession.sendGeohashMessage(content, selectedLocationChannel.channel, mesh.myPeerID, state.getNicknameValue())
             } else {
                 // Send public/channel message via mesh
                 val message = BitchatMessage(
@@ -1361,7 +1349,7 @@ class ChatViewModel @Inject constructor(
                 locationChannelManager.clearPersistedChannel()
             } catch (_: Exception) { }
 
-            geohashViewModel.panicReset()
+            geohashSession.panicReset()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to reset Nostr/geohash: ${e.message}")
         }
@@ -1465,7 +1453,7 @@ class ChatViewModel @Inject constructor(
      * Get participant count for a specific geohash (5-minute activity window)
      */
     fun geohashParticipantCount(geohash: String): Int {
-        return geohashViewModel.geohashParticipantCount(geohash)
+        return geohashSession.geohashParticipantCount(geohash)
     }
 
     /**
@@ -1475,7 +1463,7 @@ class ChatViewModel @Inject constructor(
         liveLocationGeohashes: Collection<String>,
         userSelectedGeohashes: Collection<String>,
     ) {
-        geohashViewModel.beginGeohashSampling(
+        geohashSession.beginGeohashSampling(
             liveLocationGeohashes = liveLocationGeohashes,
             userSelectedGeohashes = userSelectedGeohashes
         )
@@ -1485,46 +1473,46 @@ class ChatViewModel @Inject constructor(
      * End geohash sampling
      */
     fun endGeohashSampling() {
-        geohashViewModel.endGeohashSampling()
+        geohashSession.endGeohashSampling()
     }
 
     /**
      * Check if a geohash person is teleported (iOS-compatible)
      */
     fun isPersonTeleported(pubkeyHex: String): Boolean {
-        return geohashViewModel.isPersonTeleported(pubkeyHex)
+        return geohashSession.isPersonTeleported(pubkeyHex)
     }
 
     /**
      * Start geohash DM with pubkey hex (iOS-compatible)
      */
     fun startGeohashDM(pubkeyHex: String) {
-        geohashViewModel.startGeohashDM(pubkeyHex) { convKey ->
+        geohashSession.startGeohashDM(pubkeyHex) { convKey ->
             openPrivateChat(convKey)
         }
     }
 
     fun startGeohashDMByNickname(nickname: String) {
-        geohashViewModel.startGeohashDMByNickname(nickname) { convKey ->
+        geohashSession.startGeohashDMByNickname(nickname) { convKey ->
             openPrivateChat(convKey)
         }
     }
 
     fun startGeohashDMByShortId(shortId: String) {
-        geohashViewModel.startGeohashDMByShortId(shortId) { convKey ->
+        geohashSession.startGeohashDMByShortId(shortId) { convKey ->
             openPrivateChat(convKey)
         }
     }
 
     fun selectLocationChannel(channel: com.bitchat.android.geohash.ChannelID) {
-        geohashViewModel.selectLocationChannel(channel)
+        geohashSession.selectLocationChannel(channel)
     }
 
     /**
      * Block a user in geohash channels by their nickname
      */
     fun blockUserInGeohash(targetNickname: String) {
-        geohashViewModel.blockUserInGeohash(targetNickname)
+        geohashSession.blockUserInGeohash(targetNickname)
     }
 
     // MARK: - Navigation Management
@@ -1577,6 +1565,6 @@ class ChatViewModel @Inject constructor(
      * Return the stable identity used by every UI surface to color a Nostr peer.
      */
     fun peerIdentityForNostrPubkey(pubkeyHex: String): PeerIdentity =
-        geohashViewModel.peerIdentityForNostrPubkey(pubkeyHex)
+        geohashSession.peerIdentityForNostrPubkey(pubkeyHex)
 
 }

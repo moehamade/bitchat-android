@@ -1704,7 +1704,7 @@ fun PrivateChatSheet(
             val gh = GeohashConversationRegistry.get(peerID) ?: "geohash"
             val fullPubkey = GeohashAliasRegistry.get(peerID) ?: ""
             val name = if (fullPubkey.isNotEmpty()) {
-                viewModel.geohashViewModel.displayNameForGeohashConversation(fullPubkey, gh)
+                viewModel.geohashSession.displayNameForGeohashConversation(fullPubkey, gh)
             } else {
                 peerNicknames[peerID] ?: "Unknown"
             }

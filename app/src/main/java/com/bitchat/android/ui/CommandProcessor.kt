@@ -302,7 +302,7 @@ class CommandProcessor(
             val actionMessage = "* ${state.getNicknameValue() ?: "someone"} $verb $targetName $object_ *"
 
             // If we're in a geohash location channel, don't add a local echo here.
-            // GeohashViewModel.sendGeohashMessage() will add the local echo with proper metadata.
+            // GeohashSession.sendGeohashMessage() will add the local echo with proper metadata.
             val isInLocationChannel = state.selectedLocationChannel.value is com.bitchat.android.geohash.ChannelID.Location
 
             // Send as regular message

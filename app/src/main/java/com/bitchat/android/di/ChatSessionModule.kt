@@ -1,5 +1,6 @@
 package com.bitchat.android.di
 
+import android.app.Application
 import android.content.Context
 import androidx.core.app.NotificationManagerCompat
 import com.bitchat.android.geohash.ChannelID
@@ -12,6 +13,7 @@ import com.bitchat.android.ui.ChatState
 import com.bitchat.android.ui.ChatViewModelUtils
 import com.bitchat.android.ui.CommandProcessor
 import com.bitchat.android.ui.DataManager
+import com.bitchat.android.ui.GeohashSession
 import com.bitchat.android.ui.MediaSendingManager
 import com.bitchat.android.ui.MeshDelegateHandler
 import com.bitchat.android.ui.MessageManager
@@ -177,6 +179,22 @@ object ChatSessionModule {
         channelManager,
         scope
     ) { mesh.unified }
+
+    @Provides
+    @ActivityRetainedScoped
+    fun provideGeohashSession(
+        application: Application,
+        state: ChatState,
+        messageManager: MessageManager,
+        dataManager: DataManager,
+        notificationManager: NotificationManager,
+    ): GeohashSession = GeohashSession(
+        application = application,
+        state = state,
+        messageManager = messageManager,
+        dataManager = dataManager,
+        notificationManager = notificationManager
+    )
 
     @Provides
     @ActivityRetainedScoped
