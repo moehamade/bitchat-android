@@ -104,6 +104,9 @@ class ChatViewModel @Inject constructor(
     private val meshDelegateHandler: MeshDelegateHandler,
     val geohashSession: GeohashSession,
     private val messageSender: MessageSender,
+    private val privateChatSession: PrivateChatSession,
+    private val composerMedia: ComposerMedia,
+    private val contactFavorites: ContactFavorites,
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Replaced after a panic clear, so read through the session on every use.
@@ -117,33 +120,23 @@ class ChatViewModel @Inject constructor(
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
     }
 
-    fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendVoiceNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
 
-    fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder {
-        val context = getApplication<Application>().applicationContext
-        if (!LiveVoicePreferences.isEnabled(context)) return VoiceRecorder(context)
-        val recipientPeerID = toPeerIDOrNull?.let {
-            PrivateMediaRecipientResolver.resolve(it, mesh)?.meshPeerID
-        }
-        val liveTarget = when {
-            toPeerIDOrNull != null && recipientPeerID != null && mesh.hasEstablishedSession(recipientPeerID) ->
-                LiveVoiceTarget { payload -> mesh.sendVoiceFrame(recipientPeerID, payload) }
-            toPeerIDOrNull == null && channelOrNull == null && mesh.getActivePeerCount() > 0 ->
-                LiveVoiceTarget { payload -> mesh.sendVoiceFrame(null, payload) }
-            else -> null
-        }
-        return VoiceRecorder(context, liveTarget)
-    }
 
-    fun sendFileNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendFileNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
 
-    fun sendImageNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
-        mediaSendingManager.sendImageNote(toPeerIDOrNull, channelOrNull, filePath)
-    }
+
+    fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
+        composerMedia.sendVoiceNote(toPeerIDOrNull, channelOrNull, filePath)
+
+    fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder =
+        composerMedia.createVoiceRecorder(toPeerIDOrNull, channelOrNull)
+
+    fun sendFileNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
+        composerMedia.sendFileNote(toPeerIDOrNull, channelOrNull, filePath)
+
+    fun sendImageNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
+        composerMedia.sendImageNote(toPeerIDOrNull, channelOrNull, filePath)
+
+    fun cancelMediaSend(messageId: String) = composerMedia.cancelMediaSend(messageId)
 
     fun approveLegacyPrivateMedia(requestId: String) {
         mediaSendingManager.approveLegacyPrivateMedia(requestId)
@@ -486,10 +479,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun cancelMediaSend(messageId: String) {
-        // Delegate to MediaSendingManager which tracks transfer IDs and cleans up UI state
-        mediaSendingManager.cancelMediaSend(messageId)
-    }
     
     private fun loadAndInitialize() {
         // Load nickname
@@ -518,7 +507,7 @@ class ChatViewModel @Inject constructor(
 
         // Log all favorites at startup
         dataManager.logAllFavorites()
-        logCurrentFavoriteState()
+        contactFavorites.logCurrentFavoriteState()
         
         // Initialize session state monitoring
         initializeSessionStateMonitoring()
@@ -614,77 +603,15 @@ class ChatViewModel @Inject constructor(
     
     // MARK: - Private Chat Management (delegated)
     
-    suspend fun startPrivateChat(peerID: String) {
-        // For geohash conversation keys, ensure DM subscription is active
-        if (peerID.startsWith("nostr_")) {
-            ensureGeohashDMSubscriptionIfNeeded(peerID)
-        }
-
-        val (conversationID, success) = withContext(Dispatchers.IO) {
-            val canonicalID = ContactDirectory.canonicalConversationId(peerID)
-            com.bitchat.android.services.AppStateStore
-                .loadPrivateConversationHistory(canonicalID)
-            state.setPrivateChats(
-                ContactDirectory.canonicalizePrivateChats(
-                    com.bitchat.android.services.AppStateStore.privateMessages.value
-                )
-            )
-            val unreadAliases = matchingUnreadAliases(
-                unreadConversationIDs = state.getUnreadPrivateMessagesValue(),
-                canonicalConversationID = canonicalID,
-                canonicalize = ContactDirectory::canonicalConversationId
-            )
-            canonicalID to privateChatManager.startPrivateChat(
-                peerID = canonicalID,
-                meshService = mesh,
-                unreadAliases = unreadAliases
-            )
-        }
-        if (success) {
-            // Notify notification manager about current private chat
-            setCurrentPrivateChatPeer(conversationID)
-            // Clear notifications for this sender since user is now viewing the chat
-            clearNotificationsForSender(conversationID)
-        }
-    }
     
-    fun endPrivateChat() {
-        val conversationID = state.getSelectedPrivateChatPeerValue()
-        privateChatManager.endPrivateChat()
-        if (conversationID != null) {
-            com.bitchat.android.services.AppStateStore
-                .releasePrivateConversationHistory(conversationID)
-            state.setPrivateChats(
-                ContactDirectory.canonicalizePrivateChats(
-                    com.bitchat.android.services.AppStateStore.privateMessages.value
-                )
-            )
-        }
-        // Notify notification manager that no private chat is active
-        setCurrentPrivateChatPeer(null)
-        // Clear mesh mention notifications since user is now back in mesh chat
-        clearMeshMentionNotifications()
-    }
 
-    /**
-     * Ends the chat with [conversationID], unless a different one has been
-     * selected since.
-     *
-     * A private chat route calls this as it leaves. Opening one chat from
-     * another can select the new one before the old route is disposed, and
-     * that late call must not end the chat now on screen.
-     */
-    fun endPrivateChat(conversationID: String) {
-        val selected = state.getSelectedPrivateChatPeerValue() ?: return
-        if (
-            ContactDirectory.canonicalConversationId(selected).equals(
-                ContactDirectory.canonicalConversationId(conversationID),
-                ignoreCase = true
-            )
-        ) {
-            endPrivateChat()
-        }
-    }
+
+    suspend fun startPrivateChat(peerID: String) = privateChatSession.start(peerID)
+
+    fun endPrivateChat() = privateChatSession.end()
+
+    /** Ends [conversationID]'s chat, unless another has been selected since. */
+    fun endPrivateChat(conversationID: String) = privateChatSession.end(conversationID)
 
     internal suspend fun deletePrivateConversation(
         peerOrConversationID: String
@@ -872,51 +799,6 @@ class ChatViewModel @Inject constructor(
         return mesh.getPeerNicknames().entries.find { it.value == nickname }?.key
     }
     
-    fun toggleFavorite(peerID: String) {
-        Log.d("ChatViewModel", "toggleFavorite called for peerID: $peerID")
-        privateChatManager.toggleFavorite(peerID)
-
-        // Persist relationship in FavoritesPersistenceService
-        try {
-            var noiseKey: ByteArray? = null
-            var nickname: String = mesh.getPeerNicknames()[peerID] ?: peerID
-
-            val peerInfo = mesh.getPeerInfo(peerID)
-            if (peerInfo?.noisePublicKey != null) {
-                noiseKey = peerInfo.noisePublicKey
-                nickname = peerInfo.nickname
-            } else if (ContactIdentityResolver.isNoiseKeyHex(peerID)) {
-                noiseKey = ContactIdentityResolver.bytesFromHex(peerID)
-                val rel = noiseKey?.let {
-                    com.bitchat.android.favorites.FavoritesPersistenceService.shared.getFavoriteStatus(it)
-                }
-                if (rel != null) nickname = rel.peerNickname
-            } else {
-                val contact = ContactDirectory.resolve(peerID)
-                noiseKey = contact.noisePublicKey
-                contact.displayName?.let { nickname = it }
-            }
-
-            if (noiseKey != null) {
-                val identityManager = com.bitchat.android.identity.SecureIdentityStateManager(getApplication())
-                val fingerprint = identityManager.generateFingerprint(noiseKey!!)
-                val isNowFavorite = dataManager.favoritePeers.contains(fingerprint)
-
-                com.bitchat.android.favorites.FavoritesPersistenceService.shared.updateFavoriteStatus(
-                    noisePublicKey = noiseKey!!,
-                    nickname = nickname,
-                    isFavorite = isNowFavorite
-                )
-
-                try {
-                    messageRouterProvider.get().sendFavoriteNotification(peerID, isNowFavorite)
-                } catch (_: Exception) { }
-            }
-        } catch (_: Exception) { }
-
-        // Log current state after toggle
-        logCurrentFavoriteState()
-    }
     
     private fun refreshPeerFavoritedUs() {
         try {
@@ -933,12 +815,6 @@ class ChatViewModel @Inject constructor(
         } catch (_: Exception) { }
     }
 
-    private fun logCurrentFavoriteState() {        Log.i("ChatViewModel", "=== CURRENT FAVORITE STATE ===")
-        Log.i("ChatViewModel", "StateFlow favorite peers: ${favoritePeers.value}")
-        Log.i("ChatViewModel", "DataManager favorite peers: ${dataManager.favoritePeers}")
-        Log.i("ChatViewModel", "Peer fingerprints: ${privateChatManager.getAllPeerFingerprints()}")
-        Log.i("ChatViewModel", "==============================")
-    }
 
     private fun isConnectedOnMesh(peerID: String): Boolean {
         return try {
@@ -1020,6 +896,8 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
+
+    fun toggleFavorite(peerID: String) = contactFavorites.toggle(peerID)
 
     // MARK: - QR Verification
     
