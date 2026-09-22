@@ -304,7 +304,6 @@ class MainActivity : OrientationAwareActivity() {
                             SecurityVerificationSheet(
                                 conversationID = route.conversationID,
                                 onDismiss = { navigator.popTo(route, inclusive = true) },
-                                viewModel = chatViewModel,
                             )
                         }
                         entry<LocationChannelsRoute> {

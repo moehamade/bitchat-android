@@ -374,10 +374,6 @@ class ChatViewModel @Inject constructor(
 
     fun getMeshPeerInfo(peerID: String): com.bitchat.android.mesh.PeerInfo? = mesh.getPeerInfo(peerID)
 
-    fun initiateMeshHandshake(peerID: String) {
-        mesh.initiateNoiseHandshake(peerID)
-    }
-
     init {
         observeConversationPresenceWithDisconnectGrace()
         // Note: Mesh service delegate is now set by MainActivity
@@ -1244,24 +1240,8 @@ class ChatViewModel @Inject constructor(
         navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
     }
 
-    fun getPeerFingerprintForDisplay(peerID: String): String? {
-        return verificationHandler.getPeerFingerprintForDisplay(peerID)
-    }
-
-    fun getMyFingerprint(): String {
-        return verificationHandler.getMyFingerprint()
-    }
-
     fun resolvePeerDisplayNameForFingerprint(peerID: String): String {
         return verificationHandler.resolvePeerDisplayNameForFingerprint(peerID)
-    }
-
-    fun verifyFingerprintValue(fingerprint: String) {
-        verificationHandler.verifyFingerprintValue(fingerprint)
-    }
-
-    fun unverifyFingerprintValue(fingerprint: String) {
-        verificationHandler.unverifyFingerprintValue(fingerprint)
     }
 
     // MARK: - Command Autocomplete (delegated)

@@ -2,10 +2,12 @@ package com.bitchat.android.navigation
 
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.bitchat.android.MainActivity
+import com.bitchat.android.R
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.NotificationManager
 import org.junit.Assert.assertEquals
@@ -128,6 +130,23 @@ class PrivateChatDestinationTest {
         rule.waitForIdle()
         assertEquals(PEER_A, selection())
         assertFalse(rule.activity.isFinishing)
+    }
+
+    /**
+     * The security sheet reads its own ViewModel. A mesh peer with no
+     * fingerprint yet, as the synthetic one has, is offered a handshake.
+     */
+    @Test
+    fun theSecuritySheetOffersAHandshakeToAPeerWithNoFingerprint() {
+        rule.awaitChat()
+        openPrivateChat(PEER_A)
+        rule.awaitSheet()
+        rule.navigateTo(SecurityVerificationRoute(PEER_A))
+
+        val startHandshake = rule.activity.getString(R.string.fingerprint_start_handshake)
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithText(startHandshake).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     /** Closing a chat opened from a notification lands on the conversation list. */
