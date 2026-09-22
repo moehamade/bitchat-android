@@ -606,8 +606,6 @@ class ChatViewModel @Inject constructor(
     
 
 
-    suspend fun startPrivateChat(peerID: String) = privateChatSession.start(peerID)
-
     fun endPrivateChat() = privateChatSession.end()
 
     /** Ends [conversationID]'s chat, unless another has been selected since. */
@@ -721,16 +719,10 @@ class ChatViewModel @Inject constructor(
     }
 
     internal fun conversationDraft(conversationID: String?): String =
-        conversationID
-            ?.let(ContactDirectory::canonicalConversationId)
-            ?.lowercase()
-            ?.let(conversationListPreferences.drafts.value::get)
-            .orEmpty()
+        conversationListPreferences.composerDraft(conversationID)
 
-    internal fun setConversationDraft(conversationID: String?, text: String) {
-        if (conversationID.isNullOrBlank()) return
-        conversationListPreferences.setDraft(conversationID, text)
-    }
+    internal fun setConversationDraft(conversationID: String?, text: String) =
+        conversationListPreferences.saveComposerDraft(conversationID, text)
 
     // MARK: - Open Latest Unread Private Chat
 

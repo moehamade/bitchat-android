@@ -279,28 +279,9 @@ class MainActivity : OrientationAwareActivity() {
                             )
                         }
                         entry<PrivateChatRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
-                            val selectedPrivatePeer by chatViewModel.selectedPrivateChatPeer.collectAsState()
-                            // Follows the conversation as it resolves to a contact. The
-                            // resolvers move the selection to the same canonical id, so
-                            // keying on it re-reads the id when that happens.
-                            val conversationID = remember(route, selectedPrivatePeer) {
-                                ContactDirectory.canonicalConversationId(route.conversationID)
-                            }
-                            // Ends the chat once the entry has left the stack, whichever
-                            // way it left: Back, a swipe, the close button, or another
-                            // chat taking its place. Not on recreation, which disposes
-                            // the entry while the stack still holds it.
-                            DisposableEffect(route) {
-                                onDispose {
-                                    if (route !in navigator.backStack) {
-                                        chatViewModel.endPrivateChat(route.conversationID)
-                                    }
-                                }
-                            }
                             PrivateChatSheet(
-                                peerID = conversationID,
-                                viewModel = chatViewModel,
-                                onShowSecurityVerification = {
+                                routeConversationID = route.conversationID,
+                                onShowSecurityVerification = { conversationID ->
                                     navigator.goTo(SecurityVerificationRoute(conversationID))
                                 },
                                 onDismiss = { navigator.popTo(route, inclusive = true) },

@@ -5,6 +5,8 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.input.TextFieldValue
+import com.bitchat.android.services.ContactDirectory
+import com.bitchat.android.services.ConversationListPreferences
 
 /**
  * The composer's text for [conversation], a private peer or null for the public
@@ -29,4 +31,18 @@ internal fun rememberComposerText(
     key = "composer:${conversation.orEmpty()}",
 ) {
     mutableStateOf(TextFieldValue(conversation?.let(storedDraft).orEmpty()))
+}
+
+/** The saved draft for a private conversation, by its canonical id; empty for none. */
+internal fun ConversationListPreferences.composerDraft(conversationID: String?): String =
+    conversationID
+        ?.let(ContactDirectory::canonicalConversationId)
+        ?.lowercase()
+        ?.let(drafts.value::get)
+        .orEmpty()
+
+/** Saves a private conversation's draft. Public timelines keep none. */
+internal fun ConversationListPreferences.saveComposerDraft(conversationID: String?, text: String) {
+    if (conversationID.isNullOrBlank()) return
+    setDraft(conversationID, text)
 }

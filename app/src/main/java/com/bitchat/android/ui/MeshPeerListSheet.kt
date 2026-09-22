@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.core.ui.component.button.CloseButton
 import com.bitchat.android.core.ui.component.sheet.BitchatBottomSheet
@@ -1644,16 +1645,20 @@ private fun convertRSSIToSignalStrength(rssi: Int?): Int {
 /**
  * A private conversation, the content of a sheet destination.
  *
- * [peerID] is the conversation to show. Selecting it here, rather than where
- * it was opened, lets the chat come back when its entry is restored.
+ * [routeConversationID] is the id the route was opened with. The ViewModel
+ * starts the chat and ends it when the entry leaves the stack, and follows
+ * the conversation as it resolves to a contact.
  */
 @Composable
 fun PrivateChatSheet(
-    peerID: String,
-    viewModel: ChatViewModel,
-    onShowSecurityVerification: () -> Unit,
+    routeConversationID: String,
+    onShowSecurityVerification: (conversationID: String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val viewModel = hiltViewModel<PrivateChatViewModel, PrivateChatViewModel.Factory>(
+        creationCallback = { factory -> factory.create(routeConversationID) }
+    )
+    val peerID by viewModel.conversationID.collectAsStateWithLifecycle()
     val colorScheme = MaterialTheme.colorScheme
     val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
     val peerNicknames by viewModel.peerNicknames.collectAsStateWithLifecycle()
@@ -1672,11 +1677,6 @@ fun PrivateChatSheet(
     }
     val activeMeshPeerID = contactResolution.meshPeerID
     val isWifiAware = activeMeshPeerID in wifiAwareConnected.keys || peerID in wifiAwareConnected.keys
-
-    // Start private chat when screen opens
-    LaunchedEffect(peerID) {
-        viewModel.startPrivateChat(peerID)
-    }
 
     val isNostrPeer = peerID.startsWith("nostr_") || peerID.startsWith("nostr:")
     val favoriteRelationship = remember(peerID, favoritePeers, peerFavoritedUs) {
@@ -1792,7 +1792,7 @@ fun PrivateChatSheet(
             MessagesList(
                 messages = messages,
                 currentUserNickname = nickname,
-                meshService = viewModel.meshServiceFacade,
+                meshService = viewModel.mesh,
                 modifier = Modifier.weight(1f),
                 conversationKey = "dm:$peerID",
                 forceScrollToBottom = forceScrollToBottom,
@@ -1808,7 +1808,7 @@ fun PrivateChatSheet(
             var messageText by remember(peerID) {
                 mutableStateOf(
                     androidx.compose.ui.text.input.TextFieldValue(
-                        viewModel.conversationDraft(peerID)
+                        viewModel.draft(peerID)
                     )
                 )
             }
@@ -1817,18 +1817,18 @@ fun PrivateChatSheet(
                 messageText = messageText,
                 onMessageTextChange = { newText ->
                     messageText = newText
-                    viewModel.setConversationDraft(peerID, newText.text)
+                    viewModel.saveDraft(peerID, newText.text)
                     // Do not update the shared suggestion state here: this sheet
                     // renders its own popups as hidden, so an update only leaves
                     // a stale popup behind for the main composer.
                 },
                 onSend = {
                     if (messageText.text.trim().isNotEmpty()) {
-                        viewModel.sendMessage(messageText.text.trim()) { accepted ->
+                        viewModel.send(messageText.text.trim()) { accepted ->
                             if (accepted) {
                                 messageText =
                                     androidx.compose.ui.text.input.TextFieldValue("")
-                                viewModel.setConversationDraft(peerID, "")
+                                viewModel.saveDraft(peerID, "")
                                 forceScrollToBottom = !forceScrollToBottom
                             }
                         }
@@ -1924,7 +1924,7 @@ fun PrivateChatSheet(
                 // cluster reads close, encryption, verification, then favorite.
                 if (!isNostrPeer && !isNostrReachableFavorite) {
                     ConversationHeaderAction(
-                        onClick = onShowSecurityVerification,
+                        onClick = { onShowSecurityVerification(peerID) },
                         contentDescription = stringResource(R.string.verify_title)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
