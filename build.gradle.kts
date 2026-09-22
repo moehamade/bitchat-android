@@ -20,6 +20,16 @@ subprojects {
         lockMode.set(LockMode.STRICT)
     }
 
+    // Robolectric resolves Android runtime jars itself (outside Gradle dependency resolution).
+    // Its legacy repo1 endpoint rejects cold GitHub-hosted runners with HTTP 403. Set for every
+    // module, because Robolectric tests live in :core:mesh as well as :app.
+    tasks.withType<Test>().configureEach {
+        systemProperty(
+            "robolectric.dependency.repo.url",
+            "https://repo.maven.apache.org/maven2"
+        )
+    }
+
     pluginManager.withPlugin("com.android.application") {
         val resolveIdeRuntimeClasspathCopyLock = tasks.register("resolveIdeRuntimeClasspathCopyLock") {
             group = "build setup"
@@ -51,5 +61,5 @@ tasks.whenTaskAdded {
 tasks.register("clientRewriteContractTest") {
     group = "verification"
     description = "Runs the complete compatibility gate for a from-scratch client rewrite."
-    dependsOn(":app:testDebugUnitTest")
+    dependsOn(":app:testDebugUnitTest", ":core:mesh:testDebugUnitTest")
 }

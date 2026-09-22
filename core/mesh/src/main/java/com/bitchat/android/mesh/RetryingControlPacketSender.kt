@@ -15,7 +15,7 @@ import kotlinx.coroutines.sync.withLock
  * it does not prove that the remote application processed the packet. Reusing the exact encoded
  * packet makes retries safe: the receiver's packet/replay protection drops copies it already saw.
  */
-internal class RetryingControlPacketSender(
+class RetryingControlPacketSender(
     private val scope: CoroutineScope,
     private val maxAttempts: Int = 3,
     private val retryDelayMs: Long = 750L,

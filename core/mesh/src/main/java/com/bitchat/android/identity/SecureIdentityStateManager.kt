@@ -1,5 +1,6 @@
 package com.bitchat.android.identity
 
+import androidx.annotation.VisibleForTesting
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
@@ -70,7 +71,8 @@ class SecureIdentityStateManager {
     }
 
     /** Test-only storage injection; production always uses encrypted prefs. */
-    internal constructor(prefs: SharedPreferences, testOnly: Boolean) {
+    @VisibleForTesting
+    constructor(prefs: SharedPreferences, testOnly: Boolean) {
         require(testOnly) { "Plain SharedPreferences are test-only" }
         privateMediaPinsEpochAtCreation = synchronized(privateMediaPinsLock) {
             privateMediaPinsEpoch

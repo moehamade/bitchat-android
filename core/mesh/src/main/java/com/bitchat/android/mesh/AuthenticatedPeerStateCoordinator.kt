@@ -12,7 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-internal interface AuthenticatedPeerStateStore {
+interface AuthenticatedPeerStateStore {
     fun load(fingerprint: String): AuthenticatedPeerState?
     fun persist(
         fingerprint: String,
@@ -22,7 +22,7 @@ internal interface AuthenticatedPeerStateStore {
     fun isPrivateMediaPinned(fingerprint: String): Boolean
 }
 
-internal class SecureAuthenticatedPeerStateStore(context: Context) : AuthenticatedPeerStateStore {
+class SecureAuthenticatedPeerStateStore(context: Context) : AuthenticatedPeerStateStore {
     private val identityState = SecureIdentityStateManager(context.applicationContext)
 
     override fun load(fingerprint: String): AuthenticatedPeerState? =
@@ -38,7 +38,7 @@ internal class SecureAuthenticatedPeerStateStore(context: Context) : Authenticat
         identityState.isPrivateMediaCapable(fingerprint)
 }
 
-internal sealed interface AuthenticatedPeerStateStatus {
+sealed interface AuthenticatedPeerStateStatus {
     data object Missing : AuthenticatedPeerStateStatus
     data object Awaiting : AuthenticatedPeerStateStatus
     data object TimedOut : AuthenticatedPeerStateStatus
@@ -46,7 +46,7 @@ internal sealed interface AuthenticatedPeerStateStatus {
 }
 
 /** Fresh, generation-scoped authenticated peer-state exchange for Noise payload 0x21. */
-internal class AuthenticatedPeerStateCoordinator(
+class AuthenticatedPeerStateCoordinator(
     private val scope: CoroutineScope,
     private val authenticatedSessionProvider: (String) -> AuthenticatedNoiseSession?,
     private val withAuthenticatedSession: (

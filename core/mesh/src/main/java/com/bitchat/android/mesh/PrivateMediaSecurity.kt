@@ -3,7 +3,7 @@ package com.bitchat.android.mesh
 import com.bitchat.android.model.PeerCapabilities
 import com.bitchat.android.noise.AuthenticatedNoiseSession
 
-internal sealed interface PrivateMediaPolicyDecision {
+sealed interface PrivateMediaPolicyDecision {
     data class Encrypted(
         val authenticatedSession: AuthenticatedNoiseSession
     ) : PrivateMediaPolicyDecision
@@ -18,7 +18,7 @@ internal sealed interface PrivateMediaPolicyDecision {
  * key and persists an HSTS-style pin by that authenticated key's SHA-256
  * fingerprint. Announcements alone can never create a pin.
  */
-internal class PrivateMediaSecurityController(
+class PrivateMediaSecurityController(
     private val authenticatedSessionProvider: (String) -> AuthenticatedNoiseSession?,
     private val peerStateStatusProvider: (
         String,

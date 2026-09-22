@@ -132,6 +132,7 @@ dependencies {
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:navigation"))
+    implementation(project(":core:mesh"))
 
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
@@ -202,6 +203,7 @@ dependencies {
     // EXIF orientation handling for images
     implementation(libs.androidx.exifinterface)
     
+    testImplementation(testFixtures(project(":core:mesh")))
     testImplementation(libs.bundles.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.bundles.compose.testing)
@@ -217,13 +219,4 @@ dependencies {
     // test APK, which runs in another process, and every such test fails to
     // start. Debug only, so release manifests are unchanged.
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-}
-
-// Robolectric resolves Android runtime jars itself (outside Gradle dependency resolution).
-// Its legacy repo1 endpoint rejects cold GitHub-hosted runners with HTTP 403.
-tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    systemProperty(
-        "robolectric.dependency.repo.url",
-        "https://repo.maven.apache.org/maven2"
-    )
 }

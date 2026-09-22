@@ -6,7 +6,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-internal class InMemoryConversationStorageCipher : ConversationStorageCipher {
+/** A process-local AES-GCM cipher for tests that need a real conversation store off-device. */
+class InMemoryConversationStorageCipher : ConversationStorageCipher {
     private var key: SecretKey = generateKey()
 
     override fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray {

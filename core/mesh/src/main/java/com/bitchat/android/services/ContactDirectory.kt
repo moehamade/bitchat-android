@@ -1,5 +1,6 @@
 package com.bitchat.android.services
 
+import androidx.annotation.VisibleForTesting
 import android.content.Context
 import com.bitchat.android.favorites.FavoriteRelationship
 import com.bitchat.android.favorites.FavoritesPersistenceService
@@ -27,7 +28,8 @@ object ContactDirectory {
     private var meshProvider: (() -> MeshService?)? = null
 
     @Volatile
-    internal var identityManagerProvider: (Context) -> SecureIdentityStateManager =
+    @set:VisibleForTesting
+    var identityManagerProvider: (Context) -> SecureIdentityStateManager =
         { SecureIdentityStateManager(it) }
 
     fun initialize(context: Context, meshProvider: () -> MeshService?) {

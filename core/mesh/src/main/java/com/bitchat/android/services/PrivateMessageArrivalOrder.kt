@@ -9,7 +9,7 @@ import com.bitchat.android.model.BitchatMessage
  * registry follows the lifetime of [AppStateStore] and lets alias merges reconstruct the order in
  * which messages entered the app, even when they were initially stored under different keys.
  */
-internal object PrivateMessageArrivalOrder {
+object PrivateMessageArrivalOrder {
     private val sequenceByMessageID = mutableMapOf<String, Long>()
     private val receivedAtByMessageID = mutableMapOf<String, Long>()
     private var nextSequence = 0L

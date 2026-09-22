@@ -25,7 +25,7 @@ fun interface LiveVoiceTarget {
     fun send(packet: ByteArray)
 }
 
-internal data class LiveVoiceCaptureStats(
+data class LiveVoiceCaptureStats(
     val queuedPcmFrames: Int,
     val encodedFrames: Int,
     val dataPackets: Int,
@@ -40,7 +40,7 @@ internal data class LiveVoiceCaptureStats(
  * Encoded access units are streamed as iOS-compatible burst packets while the same units are
  * muxed into an ordinary `.m4a`, which the existing voice-note path sends on release.
  */
-internal class LiveVoiceCapture(
+class LiveVoiceCapture(
     private val outputDirectory: File,
     private val target: LiveVoiceTarget,
     private val burstID: ByteArray = VoiceBurstPacket.makeBurstID(),

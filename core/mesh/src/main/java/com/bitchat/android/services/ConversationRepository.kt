@@ -1,5 +1,6 @@
 package com.bitchat.android.services
 
+import androidx.annotation.VisibleForTesting
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * writer so a delete/merge followed by a newly arriving message is applied in the same order that
  * [AppStateStore] publishes it.
  */
-class ConversationRepository internal constructor(
+class ConversationRepository(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Executors
         .newSingleThreadExecutor { runnable ->
@@ -84,7 +85,7 @@ class ConversationRepository internal constructor(
      * This is required when the app's controlled shutdown cleared [AppStateStore], but Android
      * reused the still-running process when the user immediately reopened the UI.
      */
-    internal fun reload(onLoaded: (PersistedConversationSnapshot) -> Unit) {
+    fun reload(onLoaded: (PersistedConversationSnapshot) -> Unit) {
         enqueueSnapshotLoad(pruneFirst = false, onLoaded = onLoaded)
     }
 
@@ -115,7 +116,7 @@ class ConversationRepository internal constructor(
         withContext(dispatcher) { Unit }
     }
 
-    internal suspend fun loadConversationAndWait(
+    suspend fun loadConversationAndWait(
         conversationID: String
     ): PersistedConversationSnapshot? = withContext(dispatcher) {
         try {
@@ -333,7 +334,8 @@ class ConversationRepository internal constructor(
         )
     }
 
-    internal fun closeForTest() {
+    @VisibleForTesting
+    fun closeForTest() {
         database.close()
     }
 }
@@ -354,7 +356,7 @@ internal data class ConversationUpsertResult(
     val orphanedMediaPaths: Set<String>
 )
 
-internal data class PersistedConversationSnapshot(
+data class PersistedConversationSnapshot(
     val chats: Map<String, List<BitchatMessage>>,
     val readMessageIDs: Set<String>,
     val arrivalOrder: List<String>,

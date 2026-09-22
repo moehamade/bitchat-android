@@ -13,7 +13,7 @@ enum class PrivateMediaWireMode {
     SIGNED_DIRECTED_RAW_0X22
 }
 
-class PreparedPrivateMediaTransfer internal constructor(
+class PreparedPrivateMediaTransfer(
     val transferId: String,
     val wireMode: PrivateMediaWireMode,
     private val commitAction: () -> Boolean
@@ -35,13 +35,13 @@ sealed interface PrivateMediaPreparation {
     data class Rejected(val reason: String) : PrivateMediaPreparation
 }
 
-internal data class BuiltPrivateMediaTransfer(
+data class BuiltPrivateMediaTransfer(
     val packet: BitchatPacket,
     val fragments: List<BitchatPacket>,
     val wireMode: PrivateMediaWireMode
 )
 
-internal sealed interface PrivateMediaBuildOutcome {
+sealed interface PrivateMediaBuildOutcome {
     data class Ready(val built: BuiltPrivateMediaTransfer) : PrivateMediaBuildOutcome
     data class RequiresLegacyConsent(val warning: String) : PrivateMediaBuildOutcome
     data object NeedsHandshake : PrivateMediaBuildOutcome
@@ -49,14 +49,14 @@ internal sealed interface PrivateMediaBuildOutcome {
     data class Rejected(val reason: String) : PrivateMediaBuildOutcome
 }
 
-internal sealed interface PrivateMediaEncryptionResult {
+sealed interface PrivateMediaEncryptionResult {
     data class Success(val ciphertext: ByteArray) : PrivateMediaEncryptionResult
     data object GenerationChanged : PrivateMediaEncryptionResult
     data object Failed : PrivateMediaEncryptionResult
 }
 
 /** Builds, routes, signs, and fragments exactly once before UI local echo. */
-internal class PrivateMediaTransferPreparer(
+class PrivateMediaTransferPreparer(
     private val senderID: ByteArray,
     private val ttl: UByte,
     private val policyProvider: (String) -> PrivateMediaPolicyDecision,

@@ -19,4 +19,5 @@ include(":app")
 include(":wear")
 include(":core:domain")
 include(":core:navigation")
+include(":core:mesh")
 // Using published Arti AAR; local module not included

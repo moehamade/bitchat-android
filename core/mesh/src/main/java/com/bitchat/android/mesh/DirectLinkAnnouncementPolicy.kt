@@ -8,7 +8,7 @@ import com.bitchat.android.model.RoutedPacket
  * This is deliberately only a routing observation. Noise authenticates the peer independently and
  * must not be restarted merely to associate the current transport link with that peer.
  */
-internal object DirectLinkAnnouncementPolicy {
+object DirectLinkAnnouncementPolicy {
     data class Observation(
         val peerID: String,
         val relayAddress: String,

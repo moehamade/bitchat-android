@@ -59,17 +59,19 @@ BLE/Wi-Fi mesh, protocol, Noise/crypto, identity, Nostr, geohash, and media.
 and JVM tests in `src/test/`. Specifications are in `docs/`; tooling is in
 `tools/`.
 
-`app/` is the source of truth for shared mesh/protocol code, alongside
-`core/domain/`, which holds the domain models that Android library modules
+`core/mesh/` holds the mesh transport stack both clients run: protocol,
+Noise/crypto, identity, gossip sync, private conversation storage and voice
+frames. `core/domain/` holds the domain models that Android library modules
 need (Gradle forbids a library module depending on an application module).
-`:wear` depends on `:core:domain` as a module. For the rest,
-`syncSharedAppSources` generates `wear/build/sharedSrc` from `app/` using the
-include list in `wear/build.gradle.kts`. Extend that list; never copy shared
-Kotlin into `wear/src/` or edit generated `build/` content.
+`:app` and `:wear` depend on both. Where the clients differ, `:core:mesh`
+takes the policy from its caller (Bluetooth permissions) or a hook the app
+registers (`TransportToggles`), never a same-name class per client. Shared
+test doubles, including the JVM `android.util` shims, live in
+`core/mesh/src/testFixtures/`.
 
 `core/navigation/` holds the Navigator, the NavDisplay host and the Hilt
 module that binds them. Routes stay in `app/`, because they name this app's
-destinations. Both `core/` modules keep the package names they had inside
+destinations. The `core/` modules keep the package names they had inside
 `app/`, so moving a file between them needs no import changes.
 
 `build-logic/` holds the Gradle convention plugins (`bitchat.android.*`)

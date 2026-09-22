@@ -1,5 +1,6 @@
 package com.bitchat.android.services
 
+import androidx.annotation.VisibleForTesting
 import android.content.Context
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
@@ -88,7 +89,8 @@ object AppStateStore {
         repository.reload(::restorePrivateConversations)
     }
 
-    internal fun setConversationRepositoryForTest(repository: ConversationRepository?) {
+    @VisibleForTesting
+    fun setConversationRepositoryForTest(repository: ConversationRepository?) {
         conversationRepository = repository
     }
 
@@ -644,7 +646,7 @@ object AppStateStore {
         }
     }
 
-    internal suspend fun deletePrivateConversationAndWait(
+    suspend fun deletePrivateConversationAndWait(
         peerOrConversationID: String
     ): DeletedPrivateConversation? {
         loadPrivateConversationHistory(peerOrConversationID)
@@ -692,7 +694,7 @@ object AppStateStore {
         return deletion
     }
 
-    internal suspend fun restoreDeletedConversation(
+    suspend fun restoreDeletedConversation(
         deletion: DeletedPrivateConversation
     ): Boolean {
         val repository = conversationRepository ?: return false
@@ -869,7 +871,7 @@ object AppStateStore {
         ).joinToString("\u001F")
     }
 
-    internal fun restorePrivateConversations(snapshot: PersistedConversationSnapshot) {
+    fun restorePrivateConversations(snapshot: PersistedConversationSnapshot) {
         synchronized(this) {
             if (privateConversationWritesSuspended) return
             val liveChats = _privateMessages.value
@@ -1102,7 +1104,7 @@ private data class PendingPrivateMessagePersistence(
     val generation: Long
 )
 
-internal data class DeletedPrivateConversation(
+data class DeletedPrivateConversation(
     val conversationID: String,
     val aliases: Set<String>,
     val displayName: String?,

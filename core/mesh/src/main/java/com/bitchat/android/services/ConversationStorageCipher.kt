@@ -16,7 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
  * Deleting the dedicated alias provides practical cryptographic erasure before SQLite pages, WAL
  * records, and filesystem blocks are reclaimed.
  */
-internal interface ConversationStorageCipher {
+interface ConversationStorageCipher {
     fun encrypt(plaintext: ByteArray, associatedData: ByteArray): ByteArray
     fun decrypt(envelope: ByteArray, associatedData: ByteArray): ByteArray
     fun destroyKey()
