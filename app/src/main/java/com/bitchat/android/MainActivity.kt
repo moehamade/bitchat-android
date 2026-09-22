@@ -318,7 +318,6 @@ class MainActivity : OrientationAwareActivity() {
                                 // Swaps channels for notes rather than stacking them, so
                                 // Back from notes returns to chat as it always has.
                                 onShowLocationNotes = { navigator.replaceCurrent(LocationNotesRoute) },
-                                viewModel = chatViewModel,
                             )
                         }
                         entry<VerificationRoute> { route ->

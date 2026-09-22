@@ -339,7 +339,6 @@ class ChatViewModel @Inject constructor(
     val isTeleported: StateFlow<Boolean> = state.isTeleported
     val geohashPeople: StateFlow<List<GeoPerson>> = state.geohashPeople
     val teleportedGeo: StateFlow<Set<String>> = state.teleportedGeo
-    val geohashParticipantCounts: StateFlow<Map<String, Int>> = state.geohashParticipantCounts
     val meshServiceFacade: MeshService
         get() = mesh
     val myPeerID: String
@@ -1456,25 +1455,6 @@ class ChatViewModel @Inject constructor(
         return geohashSession.geohashParticipantCount(geohash)
     }
 
-    /**
-     * Begin sampling multiple geohashes for participant activity
-     */
-    fun beginGeohashSampling(
-        liveLocationGeohashes: Collection<String>,
-        userSelectedGeohashes: Collection<String>,
-    ) {
-        geohashSession.beginGeohashSampling(
-            liveLocationGeohashes = liveLocationGeohashes,
-            userSelectedGeohashes = userSelectedGeohashes
-        )
-    }
-
-    /**
-     * End geohash sampling
-     */
-    fun endGeohashSampling() {
-        geohashSession.endGeohashSampling()
-    }
 
     /**
      * Check if a geohash person is teleported (iOS-compatible)

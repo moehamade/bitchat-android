@@ -58,6 +58,7 @@ import com.bitchat.android.nostr.NearbyNotesController
 import com.bitchat.android.nostr.geohashesForSampling
 import com.bitchat.android.ui.theme.BASE_FONT_SIZE
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.sheet.BitchatSheetTitle
@@ -103,8 +104,8 @@ private val ChannelSelectedDot = SheetRowSelectedDot
 fun LocationChannelsScreen(
     onClose: () -> Unit,
     onShowLocationNotes: () -> Unit,
-    viewModel: ChatViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: LocationChannelsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val locationManager = LocationChannelManager.getInstance(context)
@@ -126,6 +127,7 @@ fun LocationChannelsScreen(
     val bookmarks by bookmarksStore.bookmarks.collectAsStateWithLifecycle()
     val bookmarkNames by bookmarksStore.bookmarkNames.collectAsStateWithLifecycle()
     val geohashParticipantCounts by viewModel.geohashParticipantCounts.collectAsStateWithLifecycle()
+    val meshPeopleCount by viewModel.meshPeopleCount.collectAsStateWithLifecycle()
     val wifiAwareEnabled by WifiAwareController.enabled.collectAsStateWithLifecycle()
 
     var customGeohash by remember { mutableStateOf("") }
@@ -232,7 +234,7 @@ fun LocationChannelsScreen(
                             shape = AboutCardShape
                         ) {
                             ChannelOptionRow(
-                                title = meshTitleWithCount(viewModel),
+                                title = meshTitleWithCount(meshPeopleCount),
                                 subtitle = stringResource(
                                     if (wifiAwareEnabled) {
                                         R.string.location_bluetooth_wifi_subtitle
@@ -242,9 +244,9 @@ fun LocationChannelsScreen(
                                     meshRangeString()
                                 ),
                                 isSelected = selectedChannel is ChannelID.Mesh,
-                                participantCount = meshCount(viewModel),
+                                participantCount = meshPeopleCount,
                                 titleColor = standardBlue,
-                                titleBold = meshCount(viewModel) > 0,
+                                titleBold = meshPeopleCount > 0,
                                 onClick = {
                                     locationManager.select(ChannelID.Mesh)
                                     onClose()
@@ -683,14 +685,10 @@ fun LocationChannelsScreen(
             bookmarks = emptyList(),
             notesRevealed = notesRevealed,
         )
-        viewModel.beginGeohashSampling(
+        viewModel.sampleGeohashes(
             liveLocationGeohashes = liveLocationGeohashes,
             userSelectedGeohashes = bookmarks
         )
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { viewModel.endGeohashSampling() }
     }
 }
 
@@ -1084,17 +1082,11 @@ private fun splitTitleAndCount(title: String): Pair<String, String?> {
 }
 
 @Composable
-private fun meshTitleWithCount(viewModel: ChatViewModel): String {
-    val meshCount = meshCount(viewModel)
+private fun meshTitleWithCount(meshCount: Int): String {
     val ctx = LocalContext.current
     val peopleText = ctx.resources.getQuantityString(R.plurals.people_count, meshCount, meshCount)
     val meshLabel = stringResource(R.string.mesh_title)
     return "$meshLabel$TITLE_COUNT_SEP$peopleText"
-}
-
-private fun meshCount(viewModel: ChatViewModel): Int {
-    val myID = viewModel.myPeerID
-    return viewModel.connectedPeers.value?.count { it != myID } ?: 0
 }
 
 @Composable
