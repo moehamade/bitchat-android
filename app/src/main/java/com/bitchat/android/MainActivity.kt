@@ -42,6 +42,7 @@ import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.AppForegroundEffect
+import com.bitchat.android.ui.ChatMeshDelegate
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatUserSheet
 import com.bitchat.android.ui.LocationChannelsScreen
@@ -118,6 +119,10 @@ class MainActivity : OrientationAwareActivity() {
     // starts a QR verification through it.
     @Inject
     lateinit var verificationHandler: VerificationHandler
+
+    // What the mesh reports to while the UI is attached; the chat session's.
+    @Inject
+    lateinit var chatMeshDelegate: ChatMeshDelegate
 
     private val forceFinishReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
@@ -399,7 +404,7 @@ class MainActivity : OrientationAwareActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 WifiAwareController.running.collect { running ->
                     if (running && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                        unifiedMeshService.delegate = chatViewModel
+                        unifiedMeshService.delegate = chatMeshDelegate
                     }
                 }
             }
@@ -878,7 +883,7 @@ class MainActivity : OrientationAwareActivity() {
                 }
 
                 // Set up unified mesh delegate and start enabled transports
-                unifiedMeshService.delegate = chatViewModel
+                unifiedMeshService.delegate = chatMeshDelegate
                 unifiedMeshService.startServices()
                 startMeshForegroundServiceBestEffort()
 
@@ -931,8 +936,8 @@ class MainActivity : OrientationAwareActivity() {
 
         // Check Bluetooth and Location status on resume and handle accordingly
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
-            // Reattach mesh delegate to new ChatViewModel instance after Activity recreation
-            try { unifiedMeshService.delegate = chatViewModel } catch (_: Exception) { }
+            // Reattach the session's mesh delegate, detached in onPause
+            try { unifiedMeshService.delegate = chatMeshDelegate } catch (_: Exception) { }
 
             // Check if Bluetooth was disabled while app was backgrounded
             val currentBluetoothStatus = bluetoothStatusManager.checkBluetoothStatus()

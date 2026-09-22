@@ -45,9 +45,16 @@ class PanicClearSessionTest {
         val context = rule.activity.applicationContext
         assertSame(MeshServiceHolder.getUnifiedOrCreate(context), after)
         assertNotEquals(before.myPeerID, after.myPeerID)
-        // The mesh reports to the ViewModel, which forwards to the session's
-        // delegate handler.
-        assertSame(chatViewModel(), after.delegate)
+        // The recreated mesh reports to the session's delegate.
+        assertSame(rule.activity.chatMeshDelegate, after.delegate)
+    }
+
+    @Test
+    fun theMeshReportsToTheSessionOnceTheAppHasStarted() {
+        rule.awaitChat()
+
+        val mesh = MeshServiceHolder.getUnifiedOrCreate(rule.activity.applicationContext)
+        rule.waitUntil(timeoutMillis = 5_000) { mesh.delegate === rule.activity.chatMeshDelegate }
     }
 
     private fun chatViewModel(): ChatViewModel =

@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
-import com.bitchat.android.mesh.BluetoothMeshDelegate
 import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.service.MeshServiceHolder
@@ -102,7 +101,8 @@ class ChatViewModel @Inject constructor(
     private val composerMedia: ComposerMedia,
     private val contactFavorites: ContactFavorites,
     private val conversationDirectory: ConversationDirectory,
-) : AndroidViewModel(application), BluetoothMeshDelegate {
+    private val meshDelegate: ChatMeshDelegate,
+) : AndroidViewModel(application) {
 
     private val mesh: MeshService
         get() = sessionMesh.unified
@@ -596,52 +596,6 @@ class ChatViewModel @Inject constructor(
         return commandProcessor.selectMentionSuggestion(nickname, currentText)
     }
     
-    // MARK: - BluetoothMeshDelegate Implementation (delegated)
-    
-    override fun didReceiveMessage(message: BitchatMessage) {
-        meshDelegateHandler.didReceiveMessage(message)
-    }
-    
-    override fun didUpdatePeerList(peers: List<String>) {
-        meshDelegateHandler.didUpdatePeerList(peers)
-    }
-
-    override fun didReceiveChannelLeave(channel: String, fromPeer: String) {
-        meshDelegateHandler.didReceiveChannelLeave(channel, fromPeer)
-    }
-    
-    override fun didReceiveDeliveryAck(messageID: String, recipientPeerID: String) {
-        meshDelegateHandler.didReceiveDeliveryAck(messageID, recipientPeerID)
-    }
-    
-    override fun didReceiveReadReceipt(messageID: String, recipientPeerID: String) {
-        meshDelegateHandler.didReceiveReadReceipt(messageID, recipientPeerID)
-    }
-
-    override fun didReceiveVerifyChallenge(peerID: String, payload: ByteArray, timestampMs: Long) {
-        verificationHandler.didReceiveVerifyChallenge(peerID, payload)
-    }
-
-    override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {
-        verificationHandler.didReceiveVerifyResponse(peerID, payload)
-    }
-
-    override fun didResolvePrivateMediaPolicy(peerID: String) {
-        mediaSendingManager.retryPendingPrivateMedia(peerID)
-    }
-    
-    override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {
-        return meshDelegateHandler.decryptChannelMessage(encryptedContent, channel)
-    }
-    
-    override fun getNickname(): String? {
-        return meshDelegateHandler.getNickname()
-    }
-    
-    override fun isFavorite(peerID: String): Boolean {
-        return meshDelegateHandler.isFavorite(peerID)
-    }
-    
     // MARK: - Emergency Clear
 
     private var panicClearInProgress = false
@@ -752,7 +706,7 @@ class ChatViewModel @Inject constructor(
 
         // Replace the session's reference and set up the new service
         sessionMesh.replace(freshMeshService, freshUnifiedMeshService)
-        mesh.delegate = this
+        mesh.delegate = meshDelegate
 
         // Restart mesh operations with new identity
         mesh.startServices()
