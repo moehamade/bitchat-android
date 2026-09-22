@@ -2,7 +2,6 @@ package com.bitchat.android.ui
 
 import android.app.Application
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bitchat.android.favorites.FavoritesChangeListener
@@ -69,8 +68,7 @@ private data class ConversationLiveIdentityState(
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     application: Application,
-    initialMeshService: BluetoothMeshService,
-    initialUnifiedMeshService: MeshService,
+    private val sessionMesh: ChatSessionMesh,
     // Injected as dagger.Lazy because every one of these was previously reached
     // through getInstance(...) at the point of use. Resolving them eagerly would
     // construct them during ViewModel creation, which is earlier than before.
@@ -89,15 +87,28 @@ class ChatViewModel @Inject constructor(
     // geohash DM resolves its conversation first, and the unread shortcut picks
     // one. The ViewModel shares the Activity's retained scope, as the navigator
     // does, so it never outlives the stack it drives.
-    private val navigator: Navigator
+    private val navigator: Navigator,
+    // Shared with the screens' own ViewModels, so it is injected rather than
+    // built here; it lives exactly as long as this ViewModel.
+    private val state: ChatState,
+    // The session's managers, shared with the screens' own ViewModels.
+    private val dataManager: DataManager,
+    private val messageManager: MessageManager,
+    private val channelManager: ChannelManager,
+    val privateChatManager: PrivateChatManager,
+    private val commandProcessor: CommandProcessor,
+    private val notificationManager: NotificationManager,
+    private val identityManager: SecureIdentityStateManager,
+    private val verificationHandler: VerificationHandler,
+    private val mediaSendingManager: MediaSendingManager,
+    private val meshDelegateHandler: MeshDelegateHandler,
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
-    // Made var to support mesh service replacement after panic clear
-    var meshService: BluetoothMeshService = initialMeshService
-        private set
-    private var unifiedMeshService: MeshService = initialUnifiedMeshService
+    // Replaced after a panic clear, so read through the session on every use.
+    val meshService: BluetoothMeshService
+        get() = sessionMesh.bluetooth
     private val mesh: MeshService
-        get() = unifiedMeshService
+        get() = sessionMesh.unified
 
     companion object {
         private const val TAG = "ChatViewModel"
@@ -154,18 +165,10 @@ class ChatViewModel @Inject constructor(
         return VerificationService.buildMyQRString(nickname, npub) ?: ""
     }
 
-    // MARK: - State management
-    private val state = ChatState(
-        scope = viewModelScope,
-    )
-
     // Transfer progress tracking
     private val transferMessageMap = mutableMapOf<String, String>()
     private val messageTransferMap = mutableMapOf<String, String>()
 
-    // Specialized managers
-    private val dataManager = DataManager(application.applicationContext)
-    private val identityManager by lazy { SecureIdentityStateManager(getApplication()) }
     // dagger.Lazy caches, so these resolve once and stay cheap thereafter.
     private val seenMessageStore: SeenMessageStore get() = seenMessageStoreLazy.get()
     private val locationChannelManager: LocationChannelManager
@@ -173,85 +176,8 @@ class ChatViewModel @Inject constructor(
     private val geohashBookmarksStore: GeohashBookmarksStore
         get() = geohashBookmarksStoreLazy.get()
     private val nostrTransport: NostrTransport get() = nostrTransportLazy.get()
-    private val messageManager = MessageManager(state)
-    private val channelManager = ChannelManager(
-        state,
-        messageManager,
-        dataManager,
-        viewModelScope,
-        onSwitchToMeshLocation = {
-            com.bitchat.android.geohash.LocationChannelManager
-                .getInstance(getApplication())
-                .select(com.bitchat.android.geohash.ChannelID.Mesh)
-        }
-    )
-
-    // Create Noise session delegate for clean dependency injection
-    private val noiseSessionDelegate = object : NoiseSessionDelegate {
-        override fun hasEstablishedSession(peerID: String): Boolean = hasEstablishedSessionOnAnyLocalTransport(peerID)
-        override fun initiateHandshake(peerID: String) = initiateNoiseHandshakeOnBestLocalTransport(peerID)
-        override fun getMyPeerID(): String = mesh.myPeerID
-    }
-
-    val privateChatManager = PrivateChatManager(
-        state,
-        messageManager,
-        dataManager,
-        noiseSessionDelegate,
-        hasReadReceiptBeenSent = { messageID ->
-            seenMessageStore.hasReadReceiptBeenSent(messageID)
-        },
-        markMessageReadLocally = { messageID ->
-            seenMessageStore.markReadLocally(messageID)
-        }
-    )
-    private val commandProcessor = CommandProcessor(
-        state,
-        messageManager,
-        channelManager,
-        privateChatManager,
-        viewModelScope
-    )
-    private val notificationManager = NotificationManager(
-      application.applicationContext,
-      NotificationManagerCompat.from(application.applicationContext)
-    )
-
-    private val verificationHandler = VerificationHandler(
-        context = application.applicationContext,
-        scope = viewModelScope,
-        getMeshService = { mesh },
-        identityManager = identityManager,
-        state = state,
-        notificationManager = notificationManager,
-        messageManager = messageManager
-    )
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
 
-    // Media file sending manager
-    private val mediaSendingManager = MediaSendingManager(
-        state,
-        messageManager,
-        channelManager,
-        viewModelScope
-    ) { mesh }
-    
-    // Delegate handler for mesh callbacks
-    private val meshDelegateHandler = MeshDelegateHandler(
-        state = state,
-        messageManager = messageManager,
-        channelManager = channelManager,
-        privateChatManager = privateChatManager,
-        notificationManager = notificationManager,
-        coroutineScope = viewModelScope,
-        onHapticFeedback = { ChatViewModelUtils.triggerHapticFeedback(application.applicationContext) },
-        getMyPeerID = { mesh.myPeerID },
-        getMeshService = { mesh },
-        markMessageReadLocally = { messageID ->
-            seenMessageStore.markReadLocally(messageID)
-        }
-    )
-    
     // New Geohash architecture ViewModel (replaces God object service usage in UI path)
     val geohashViewModel = GeohashViewModel(
         application = application,
@@ -1185,23 +1111,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun hasEstablishedSessionOnMesh(peerID: String): Boolean {
-        return try {
-            mesh.getPeerInfo(peerID)?.isConnected == true &&
-                mesh.hasEstablishedSession(peerID)
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    private fun hasEstablishedSessionOnAnyLocalTransport(peerID: String): Boolean {
-        return hasEstablishedSessionOnMesh(peerID)
-    }
-
-    private fun initiateNoiseHandshakeOnBestLocalTransport(peerID: String) {
-        mesh.initiateNoiseHandshake(peerID)
-    }
-
     private fun nicknameForPeer(peerID: String): String? {
         val contact = ContactDirectory.resolve(peerID)
         val meshPeerID = contact.meshPeerID ?: peerID
@@ -1533,9 +1442,8 @@ class ChatViewModel @Inject constructor(
         val freshMeshService = MeshServiceHolder.getOrCreate(getApplication())
         val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(getApplication())
 
-        // Replace our reference and set up the new service
-        meshService = freshMeshService
-        unifiedMeshService = freshUnifiedMeshService
+        // Replace the session's reference and set up the new service
+        sessionMesh.replace(freshMeshService, freshUnifiedMeshService)
         mesh.delegate = this
 
         // Restart mesh operations with new identity
