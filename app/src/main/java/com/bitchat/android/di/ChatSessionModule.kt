@@ -6,6 +6,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.bitchat.android.geohash.ChannelID
 import com.bitchat.android.geohash.LocationChannelManager
 import com.bitchat.android.identity.SecureIdentityStateManager
+import com.bitchat.android.services.MessageRouter
 import com.bitchat.android.services.SeenMessageStore
 import com.bitchat.android.ui.ChannelManager
 import com.bitchat.android.ui.ChatSessionMesh
@@ -132,6 +133,7 @@ object ChatSessionModule {
     @Provides
     @ActivityRetainedScoped
     fun provideCommandProcessor(
+        @ApplicationContext context: Context,
         state: ChatState,
         messageManager: MessageManager,
         channelManager: ChannelManager,
@@ -142,7 +144,11 @@ object ChatSessionModule {
         messageManager,
         channelManager,
         privateChatManager,
-        scope
+        scope,
+        routePrivateMessage = { mesh, content, peerID, recipientNickname, messageId ->
+            MessageRouter.getInstance(context, mesh)
+                .sendPrivate(content, peerID, recipientNickname, messageId)
+        }
     )
 
     @Provides

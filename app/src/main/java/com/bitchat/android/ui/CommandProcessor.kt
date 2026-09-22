@@ -7,6 +7,10 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+/** Sends a private message: (mesh, content, peerID, recipientNickname, messageId). */
+typealias RoutePrivateMessage =
+    (meshService: MeshService, content: String, peerID: String, recipientNickname: String, messageId: String) -> Unit
+
 /**
  * Handles processing of IRC-style commands
  */
@@ -15,7 +19,11 @@ class CommandProcessor(
     private val messageManager: MessageManager,
     private val channelManager: ChannelManager,
     private val privateChatManager: PrivateChatManager,
-    private val coroutineScope: CoroutineScope? = null
+    private val coroutineScope: CoroutineScope? = null,
+    // How /msg hands a private message to a transport. The app routes it
+    // through MessageRouter, which can fall back to Nostr; left null, it goes
+    // straight to the mesh, which is what the unit tests exercise.
+    private val routePrivateMessage: RoutePrivateMessage? = null,
 ) {
     
     // Available commands list
@@ -34,22 +42,22 @@ class CommandProcessor(
     
     // MARK: - Command Processing
     
-    fun processCommand(command: String, meshService: MeshService, myPeerID: String, onSendMessage: (String, List<String>, String?) -> Unit, viewModel: ChatViewModel? = null): Boolean {
+    fun processCommand(command: String, meshService: MeshService, myPeerID: String, onSendMessage: (String, List<String>, String?) -> Unit): Boolean {
         if (!command.startsWith("/")) return false
         
         val parts = command.split(" ")
         val cmd = parts.first().lowercase()
         when (cmd) {
             "/j", "/join" -> handleJoinCommand(parts, myPeerID)
-            "/m", "/msg" -> handleMessageCommand(parts, meshService, viewModel)
-            "/pay" -> handlePayCommand(command, meshService, myPeerID, onSendMessage, viewModel)
-            "/w" -> handleWhoCommand(meshService, viewModel)
+            "/m", "/msg" -> handleMessageCommand(parts, meshService)
+            "/pay" -> handlePayCommand(command, meshService, myPeerID, onSendMessage)
+            "/w" -> handleWhoCommand(meshService)
             "/clear" -> handleClearCommand()
             "/pass" -> handlePassCommand(parts, myPeerID)
             "/block" -> handleBlockCommand(parts, meshService)
             "/unblock" -> handleUnblockCommand(parts, meshService)
-            "/hug" -> handleActionCommand(parts, "gives", "a warm hug 🫂", meshService, myPeerID, onSendMessage, viewModel)
-            "/slap" -> handleActionCommand(parts, "slaps", "around a bit with a large trout 🐟", meshService, myPeerID, onSendMessage, viewModel)
+            "/hug" -> handleActionCommand(parts, "gives", "a warm hug 🫂", meshService, myPeerID, onSendMessage)
+            "/slap" -> handleActionCommand(parts, "slaps", "around a bit with a large trout 🐟", meshService, myPeerID, onSendMessage)
             "/channels" -> handleChannelsCommand()
             else -> handleUnknownCommand(cmd)
         }
@@ -83,7 +91,7 @@ class CommandProcessor(
         }
     }
     
-    private fun handleMessageCommand(parts: List<String>, meshService: MeshService, viewModel: ChatViewModel?) {
+    private fun handleMessageCommand(parts: List<String>, meshService: MeshService) {
         if (parts.size > 1) {
             val targetName = parts[1].removePrefix("@")
             val peerID = getPeerIDForNickname(targetName, meshService)
@@ -101,8 +109,7 @@ class CommandProcessor(
                             recipientNickname,
                             state.getNicknameValue(),
                             getMyPeerID(meshService),
-                            meshService,
-                            viewModel
+                            meshService
                         )
                     } else {
                         val systemMessage = BitchatMessage(
@@ -134,10 +141,10 @@ class CommandProcessor(
         }
     }
     
-    private fun handleWhoCommand(meshService: MeshService, viewModel: ChatViewModel? = null) {
+    private fun handleWhoCommand(meshService: MeshService) {
         // Channel-aware who command (matches iOS behavior)
-        val (peerList, contextDescription) = if (viewModel != null) {
-            when (val selectedChannel = viewModel.selectedLocationChannel.value) {
+        val (peerList, contextDescription) = run {
+            when (val selectedChannel = state.selectedLocationChannel.value) {
                 is com.bitchat.android.geohash.ChannelID.Mesh,
                 null -> {
                     // Mesh channel: show Bluetooth-connected peers
@@ -150,7 +157,7 @@ class CommandProcessor(
                 
                 is com.bitchat.android.geohash.ChannelID.Location -> {
                     // Location channel: show geohash participants
-                    val geohashPeople = viewModel.geohashPeople.value ?: emptyList()
+                    val geohashPeople = state.geohashPeople.value
                     val currentNickname = state.getNicknameValue()
                     
                     val participantList = geohashPeople.mapNotNull { person ->
@@ -166,13 +173,6 @@ class CommandProcessor(
                     Pair(participantList, "participants in ${selectedChannel.channel.geohash}")
                 }
             }
-        } else {
-            // Fallback to mesh behavior
-            val connectedPeers = state.getConnectedPeersValue()
-            val peerList = connectedPeers.joinToString(", ") { peerID ->
-                getPeerNickname(peerID, meshService)
-            }
-            Pair(peerList, "online users")
         }
         
         val systemMessage = BitchatMessage(
@@ -294,8 +294,7 @@ class CommandProcessor(
         object_: String, 
         meshService: MeshService,
         myPeerID: String,
-        onSendMessage: (String, List<String>, String?) -> Unit,
-        viewModel: ChatViewModel?
+        onSendMessage: (String, List<String>, String?) -> Unit
     ) {
         if (parts.size > 1) {
             val targetName = parts[1].removePrefix("@")
@@ -314,8 +313,7 @@ class CommandProcessor(
                     getPeerNickname(peerID, meshService),
                     state.getNicknameValue(),
                     myPeerID,
-                    meshService,
-                    viewModel
+                    meshService
                 )
             } else if (isInLocationChannel) {
                 // Let the transport layer add the echo; just send it out
@@ -370,8 +368,7 @@ class CommandProcessor(
         command: String,
         meshService: MeshService,
         myPeerID: String,
-        onSendMessage: (String, List<String>, String?) -> Unit,
-        viewModel: ChatViewModel?
+        onSendMessage: (String, List<String>, String?) -> Unit
     ) {
         val args = command.trim().split(Regex("\\s+")).drop(1)
         if (args.isEmpty()) {
@@ -397,7 +394,7 @@ class CommandProcessor(
                 state.getNicknameValue(),
                 myPeerID
             ) { content, peerID, recipientNickname, messageId ->
-                sendPrivateMessageVia(meshService, content, peerID, recipientNickname, messageId, viewModel)
+                sendPrivateMessageVia(meshService, content, peerID, recipientNickname, messageId)
             }
         } else {
             if (!publicConfirmed) {
@@ -538,7 +535,7 @@ class CommandProcessor(
     
     // MARK: - Mention Autocomplete
     
-    fun updateMentionSuggestions(input: String, meshService: MeshService, viewModel: ChatViewModel? = null) {
+    fun updateMentionSuggestions(input: String, meshService: MeshService) {
         // Check if input contains @ and we're at the end of a word or at the end of input
         val atIndex = input.lastIndexOf('@')
         if (atIndex == -1) {
@@ -558,8 +555,8 @@ class CommandProcessor(
         }
         
         // Get peer candidates based on active channel (matches iOS logic exactly)
-        val peerCandidates: List<String> = if (viewModel != null) {
-            when (val selectedChannel = viewModel.selectedLocationChannel.value) {
+        val peerCandidates: List<String> = run {
+            when (val selectedChannel = state.selectedLocationChannel.value) {
                 is com.bitchat.android.geohash.ChannelID.Mesh,
                 null -> {
                     // Mesh channel: use Bluetooth mesh peer nicknames
@@ -569,7 +566,7 @@ class CommandProcessor(
                 
                 is com.bitchat.android.geohash.ChannelID.Location -> {
                     // Location channel: use geohash participants with collision-resistant suffixes
-                    val geohashPeople = viewModel.geohashPeople.value
+                    val geohashPeople = state.geohashPeople.value
                     val currentNickname = state.getNicknameValue()
                     val duplicateNames = duplicateGeohashBaseNames(geohashPeople)
                     
@@ -592,10 +589,6 @@ class CommandProcessor(
                     }
                 }
             }
-        } else {
-            // Fallback to mesh peers if no viewModel available
-            val peerNicknames = meshService.getPeerNicknames()
-            peerNicknames.values.filter { it != peerNicknames[meshService.myPeerID] }
         }
         
         val filteredNicknames = filterMentionCandidates(peerCandidates, textAfterAt)
@@ -645,8 +638,7 @@ class CommandProcessor(
         recipientNickname: String?,
         senderNickname: String?,
         myPeerID: String,
-        meshService: MeshService,
-        viewModel: ChatViewModel?
+        meshService: MeshService
     ) {
         val send: (String, String, String, String) -> Unit =
             { messageContent, peerIdParam, recipientNicknameParam, messageId ->
@@ -655,8 +647,7 @@ class CommandProcessor(
                     messageContent,
                     peerIdParam,
                     recipientNicknameParam,
-                    messageId,
-                    viewModel
+                    messageId
                 )
             }
         val scope = coroutineScope
@@ -688,16 +679,11 @@ class CommandProcessor(
         content: String,
         peerID: String,
         recipientNickname: String,
-        messageId: String,
-        viewModel: ChatViewModel?
+        messageId: String
     ) {
-        if (viewModel != null) {
-            com.bitchat.android.services.MessageRouter
-                .getInstance(viewModel.getApplication(), meshService)
-                .sendPrivate(content, peerID, recipientNickname, messageId)
-        } else {
-            meshService.sendPrivateMessage(content, peerID, recipientNickname, messageId)
-        }
+        routePrivateMessage
+            ?.invoke(meshService, content, peerID, recipientNickname, messageId)
+            ?: meshService.sendPrivateMessage(content, peerID, recipientNickname, messageId)
     }
 }
 

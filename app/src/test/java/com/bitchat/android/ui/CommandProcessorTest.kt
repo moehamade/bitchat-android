@@ -67,8 +67,7 @@ class CommandProcessorTest {
       command = "/j $channel",
       meshService = meshService,
       myPeerID = "peer-id",
-      onSendMessage = { a, b, c -> { } },
-      viewModel = null
+      onSendMessage = { a, b, c -> { } }
     )
 
     assertEquals(result, true)
@@ -83,8 +82,7 @@ class CommandProcessorTest {
       command = "/JOIN $channel",
       meshService = meshService,
       myPeerID = "peer-id",
-      onSendMessage = { a, b, c -> { } },
-      viewModel = null
+      onSendMessage = { a, b, c -> { } }
     )
 
     assertEquals(result, true)
@@ -97,7 +95,7 @@ class CommandProcessorTest {
 
     val result = commandProcessor.processCommand(
       command = "/wtfjoin $channel", meshService = meshService, myPeerID = "peer-id",
-      onSendMessage = { a, b, c -> { } }, viewModel = null
+      onSendMessage = { a, b, c -> { } }
     )
 
     assertEquals(result, true)
@@ -135,11 +133,41 @@ class CommandProcessorTest {
       command = "/msg alice",
       meshService = meshService,
       myPeerID = "self",
-      onSendMessage = { _, _, _ -> },
-      viewModel = null
+      onSendMessage = { _, _, _ -> }
     )
 
     assertTrue(locallyRead.contains(message.id))
+  }
+
+  @Test
+  fun `msg hands the private message to the injected router`() {
+    val peerID = "0123456789abcdef"
+    whenever(meshService.getPeerNicknames()).thenReturn(mapOf(peerID to "alice"))
+    whenever(meshService.myPeerID).thenReturn("fedcba9876543210")
+    val routed = mutableListOf<Pair<String, String>>()
+    commandProcessor = CommandProcessor(
+      state = chatState,
+      messageManager = messageManager,
+      channelManager = channelManager,
+      privateChatManager = PrivateChatManager(
+        state = chatState,
+        messageManager = messageManager,
+        dataManager = DataManager(context = context),
+        noiseSessionDelegate = mock<NoiseSessionDelegate>()
+      ),
+      routePrivateMessage = { _, content, recipient, _, _ -> routed += content to recipient }
+    )
+
+    commandProcessor.processCommand(
+      command = "/msg alice hello there",
+      meshService = meshService,
+      myPeerID = "self",
+      onSendMessage = { _, _, _ -> }
+    )
+
+    assertEquals(listOf("hello there" to peerID), routed)
+    Mockito.verify(meshService, Mockito.never())
+      .sendPrivateMessage(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
   }
 
   @Test
@@ -153,8 +181,7 @@ class CommandProcessorTest {
       command = "/pay invalid",
       meshService = meshService,
       myPeerID = "peer-id",
-      onSendMessage = { _, _, _ -> },
-      viewModel = null
+      onSendMessage = { _, _, _ -> }
     )
 
     assertEquals(
@@ -174,8 +201,7 @@ class CommandProcessorTest {
       command = "/join backchannel",
       meshService = meshService,
       myPeerID = "peer-id",
-      onSendMessage = { _, _, _ -> },
-      viewModel = null
+      onSendMessage = { _, _, _ -> }
     )
 
     assertEquals("#backchannel", chatState.getCurrentChannelValue())
@@ -200,7 +226,7 @@ class CommandProcessorTest {
     whenever(meshService.getPeerNicknames()).thenReturn(mapOf("peer-1" to "alice"))
 
     // Typing "@a" opens the mention popup.
-    commandProcessor.updateMentionSuggestions("@a", meshService, viewModel = null)
+    commandProcessor.updateMentionSuggestions("@a", meshService)
     assertTrue(chatState.getShowMentionSuggestionsValue())
 
     commandProcessor.clearSuggestions()

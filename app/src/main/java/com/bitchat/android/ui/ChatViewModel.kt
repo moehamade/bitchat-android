@@ -898,7 +898,7 @@ class ChatViewModel @Inject constructor(
                 } else {
                     mesh.sendMessage(messageContent, mentions, channel)
                 }
-            }, this)
+            })
             onAccepted(true)
             return
         }
@@ -1226,7 +1226,7 @@ class ChatViewModel @Inject constructor(
     // MARK: - Mention Autocomplete
     
     fun updateMentionSuggestions(input: String) {
-        commandProcessor.updateMentionSuggestions(input, mesh, this)
+        commandProcessor.updateMentionSuggestions(input, mesh)
     }
     
     fun selectMentionSuggestion(nickname: String, currentText: String): String {
