@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,7 +35,7 @@ data class GeoPerson(
 
 @Composable
 fun GeohashPeopleList(
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     onTapPerson: () -> Unit,
     modifier: Modifier = Modifier,
     excludedIdentityAliases: Set<String> = emptySet()
@@ -48,13 +49,14 @@ fun GeohashPeopleList(
 
     val palette = LocalBitchatPalette.current
     val colorScheme = MaterialTheme.colorScheme
+    val appContext = LocalContext.current.applicationContext
     val myHex = remember(selectedLocationChannel) {
         when (val channel = selectedLocationChannel) {
             is com.bitchat.android.geohash.ChannelID.Location -> {
                 try {
                     val identity = com.bitchat.android.nostr.NostrIdentityBridge.deriveIdentity(
                         forGeohash = channel.channel.geohash,
-                        context = viewModel.getApplication()
+                        context = appContext
                     )
                     identity.publicKeyHex.lowercase(Locale.ROOT)
                 } catch (e: Exception) {
@@ -276,7 +278,7 @@ private fun GeohashPersonItem(
     isMe: Boolean,
     hasUnreadDM: Boolean,
     isTeleported: Boolean,
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     showHashSuffix: Boolean,
     onTap: () -> Unit
 ) {

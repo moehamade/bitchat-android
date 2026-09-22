@@ -83,10 +83,10 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun MeshPeerListSheet(
-    viewModel: ChatViewModel,
     onDismiss: () -> Unit,
     onShowVerification: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: MeshPeerListViewModel = hiltViewModel(),
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
@@ -616,7 +616,7 @@ fun PeopleSection(
     wifiAwarePeerIDs: Set<String> = emptySet(),
     peopleCount: Int = 0,
     excludedIdentityAliases: Set<String> = emptySet(),
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     onPrivateChatStart: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -925,7 +925,7 @@ private fun ConversationSwipeItem(
     conversation: ConversationSummary,
     directPeerIdentityIDs: Set<String>,
     wifiAwareIdentityIDs: Set<String>,
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     isFirst: Boolean,
     isLast: Boolean,
     onPrivateChatStart: (String) -> Unit,
@@ -1095,7 +1095,7 @@ private fun ConversationRow(
     conversation: ConversationSummary,
     directPeerIdentityIDs: Set<String>,
     wifiAwareIdentityIDs: Set<String>,
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     isFavorite: Boolean,
     theyFavoritedUs: Boolean,
     isVerified: Boolean,
@@ -1444,7 +1444,7 @@ private fun PeerItem(
     theyFavoritedUs: Boolean = false,
     isVerified: Boolean,
     colorScheme: ColorScheme,
-    viewModel: ChatViewModel,
+    viewModel: MeshPeerListViewModel,
     onItemClick: () -> Unit,
     unreadCount: Int = 0,
     showNostrGlobe: Boolean = false,

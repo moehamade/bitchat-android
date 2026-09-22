@@ -267,7 +267,6 @@ class MainActivity : OrientationAwareActivity() {
                         }
                         entry<MeshPeerListRoute>(metadata = SheetSceneStrategy.sheet()) {
                             MeshPeerListSheet(
-                                viewModel = chatViewModel,
                                 onDismiss = { navigator.popTo(MeshPeerListRoute, inclusive = true) },
                                 // Pushed over the list, so Back from verification
                                 // returns to it.

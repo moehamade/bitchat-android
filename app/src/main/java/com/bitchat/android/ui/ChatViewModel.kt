@@ -104,9 +104,6 @@ class ChatViewModel @Inject constructor(
     private val conversationDirectory: ConversationDirectory,
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
-    // Replaced after a panic clear, so read through the session on every use.
-    val meshService: BluetoothMeshService
-        get() = sessionMesh.bluetooth
     private val mesh: MeshService
         get() = sessionMesh.unified
 
@@ -165,11 +162,8 @@ class ChatViewModel @Inject constructor(
     val currentChannel: StateFlow<String?> = state.currentChannel
     val channelMessages: StateFlow<Map<String, List<BitchatMessage>>> = state.channelMessages
     val unreadChannelMessages: StateFlow<Map<String, Int>> = state.unreadChannelMessages
-    val passwordProtectedChannels: StateFlow<Set<String>> = state.passwordProtectedChannels
     val showPasswordPrompt: StateFlow<Boolean> = state.showPasswordPrompt
     val passwordPromptChannel: StateFlow<String?> = state.passwordPromptChannel
-    val hasUnreadChannels = state.hasUnreadChannels
-    val hasUnreadPrivateMessages = state.hasUnreadPrivateMessages
     val showCommandSuggestions: StateFlow<Boolean> = state.showCommandSuggestions
     val commandSuggestions: StateFlow<List<CommandSuggestion>> = state.commandSuggestions
     val showMentionSuggestions: StateFlow<Boolean> = state.showMentionSuggestions
@@ -191,8 +185,6 @@ class ChatViewModel @Inject constructor(
         get() = mesh
     val myPeerID: String
         get() = mesh.myPeerID
-
-    fun getMeshPeerInfo(peerID: String): com.bitchat.android.mesh.PeerInfo? = mesh.getPeerInfo(peerID)
 
     init {
         conversationDirectory.observePresenceWithDisconnectGrace()
@@ -405,26 +397,6 @@ class ChatViewModel @Inject constructor(
 
 
 
-    internal val conversations: StateFlow<List<ConversationSummary>> =
-        conversationDirectory.conversations
-    internal val conversationStoreState = conversationDirectory.conversationStoreState
-
-    internal suspend fun deletePrivateConversation(peerOrConversationID: String) =
-        conversationDirectory.delete(peerOrConversationID)
-
-    internal suspend fun restoreDeletedConversation(
-        deletion: com.bitchat.android.services.DeletedPrivateConversation
-    ): Boolean = conversationDirectory.restore(deletion)
-
-    internal suspend fun setConversationRead(conversationID: String, isRead: Boolean): Boolean =
-        conversationDirectory.setRead(conversationID, isRead)
-
-    internal fun toggleConversationPinned(conversationID: String) =
-        conversationDirectory.togglePinned(conversationID)
-
-    internal fun toggleConversationMuted(conversationID: String) =
-        conversationDirectory.toggleMuted(conversationID)
-
     internal fun conversationDraft(conversationID: String?): String =
         conversationListPreferences.composerDraft(conversationID)
 
@@ -493,10 +465,6 @@ class ChatViewModel @Inject constructor(
     ) = messageSender.send(content, onAccepted)
 
     // MARK: - Utility Functions
-    
-    fun getPeerIDForNickname(nickname: String): String? {
-        return mesh.getPeerNicknames().entries.find { it.value == nickname }?.key
-    }
     
     
 
@@ -582,31 +550,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite(peerID: String) = contactFavorites.toggle(peerID)
-
     // MARK: - QR Verification
     
-    fun isPeerVerified(peerID: String, verifiedFingerprints: Set<String>): Boolean {
-        if (peerID.startsWith("nostr_") || peerID.startsWith("nostr:")) return false
-        val fingerprint = verificationHandler.getPeerFingerprintForDisplay(peerID)
-        return fingerprint != null && verifiedFingerprints.contains(fingerprint)
-    }
-
-    fun isNoisePublicKeyVerified(noisePublicKey: ByteArray, verifiedFingerprints: Set<String>): Boolean {
-        val fingerprint = verificationHandler.fingerprintFromNoiseBytes(noisePublicKey)
-        return verifiedFingerprints.contains(fingerprint)
-    }
-
 
     // MARK: - Debug and Troubleshooting
-    
-    fun getDebugStatus(): String {
-        return mesh.getDebugStatus()
-    }
-    
-    fun setCurrentPrivateChatPeer(peerID: String?) {
-        notificationManager.setCurrentPrivateChatPeer(peerID)
-    }
     
     fun setCurrentGeohash(geohash: String?) {
         notificationManager.setCurrentGeohash(geohash)
@@ -620,17 +567,9 @@ class ChatViewModel @Inject constructor(
         notificationManager.clearNotificationsForGeohash(geohash)
     }
 
-    fun clearMeshMentionNotifications() {
-        notificationManager.clearMeshMentionNotifications()
-    }
-
     /** Shows the private chat with [peerID], in place of whatever opened it. */
     fun openPrivateChat(peerID: String) {
         navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
-    }
-
-    fun resolvePeerDisplayNameForFingerprint(peerID: String): String {
-        return verificationHandler.resolvePeerDisplayNameForFingerprint(peerID)
     }
 
     // MARK: - Command Autocomplete (delegated)
@@ -872,29 +811,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Get participant count for a specific geohash (5-minute activity window)
-     */
-    fun geohashParticipantCount(geohash: String): Int {
-        return geohashSession.geohashParticipantCount(geohash)
-    }
-
-
-    /**
-     * Check if a geohash person is teleported (iOS-compatible)
-     */
-    fun isPersonTeleported(pubkeyHex: String): Boolean {
-        return geohashSession.isPersonTeleported(pubkeyHex)
-    }
-
-    /**
-     * Start geohash DM with pubkey hex (iOS-compatible)
-     */
-    fun startGeohashDM(pubkeyHex: String) {
-        geohashSession.startGeohashDM(pubkeyHex) { convKey ->
-            openPrivateChat(convKey)
-        }
-    }
 
     fun selectLocationChannel(channel: com.bitchat.android.geohash.ChannelID) {
         geohashSession.selectLocationChannel(channel)
@@ -940,16 +856,5 @@ class ChatViewModel @Inject constructor(
     }
 
     // MARK: - Canonical peer identities
-
-    /**
-     * Return the stable identity used by every UI surface to color a mesh peer.
-     */
-    fun peerIdentityForMeshPeer(peerID: String): PeerIdentity = PeerIdentity.mesh(peerID)
-
-    /**
-     * Return the stable identity used by every UI surface to color a Nostr peer.
-     */
-    fun peerIdentityForNostrPubkey(pubkeyHex: String): PeerIdentity =
-        geohashSession.peerIdentityForNostrPubkey(pubkeyHex)
 
 }
