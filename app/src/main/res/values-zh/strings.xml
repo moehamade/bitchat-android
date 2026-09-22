@@ -377,7 +377,6 @@
   <string name="fingerprint_their">对方指纹</string>
   <string name="fingerprint_yours">你的指纹</string>
   <string name="fingerprint_pending">握手中</string>
-  <string name="fingerprint_no_peer">打开私聊查看指纹</string>
   <string name="fingerprint_status_verified">已加密且已验证</string>
   <string name="fingerprint_status_encrypted">已加密</string>
   <string name="fingerprint_status_handshaking">握手中</string>

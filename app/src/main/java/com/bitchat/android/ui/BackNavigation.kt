@@ -3,9 +3,10 @@ package com.bitchat.android.ui
 /**
  * What a Back press should unwind next on the chat screen.
  *
- * The chat screen still layers its overlays as booleans and nullable peers on
- * [ChatState] rather than as back-stack entries, so Back is resolved by asking
- * which overlay is outermost.
+ * Sheets and screens are back-stack entries and pop themselves. What remains
+ * is state the chat screen shows in place: the join-password dialog, a channel,
+ * and a private chat started with /msg, which selects a conversation without
+ * opening its screen.
  */
 enum class BackAction {
     DismissPasswordPrompt,
@@ -27,11 +28,10 @@ enum class BackAction {
 internal fun backActionFor(
     showPasswordPrompt: Boolean,
     selectedPrivateChatPeer: String?,
-    privateChatSheetPeer: String?,
     currentChannel: String?
 ): BackAction = when {
     showPasswordPrompt -> BackAction.DismissPasswordPrompt
-    selectedPrivateChatPeer != null || privateChatSheetPeer != null -> BackAction.ExitPrivateChat
+    selectedPrivateChatPeer != null -> BackAction.ExitPrivateChat
     currentChannel != null -> BackAction.ExitChannel
     else -> BackAction.None
 }
@@ -46,6 +46,5 @@ internal fun backActionFor(
 fun ChatState.pendingBackAction(): BackAction = backActionFor(
     showPasswordPrompt = getShowPasswordPromptValue(),
     selectedPrivateChatPeer = getSelectedPrivateChatPeerValue(),
-    privateChatSheetPeer = getPrivateChatSheetPeerValue(),
     currentChannel = getCurrentChannelValue()
 )

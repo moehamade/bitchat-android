@@ -119,18 +119,6 @@ class ChatState(
     
     // peerIDToPublicKeyFingerprint REMOVED - fingerprints now handled centrally in PeerManager
     
-    // Navigation state
-
-    private val _showMeshPeerList = MutableStateFlow(false)
-    val showMeshPeerList: StateFlow<Boolean> = _showMeshPeerList.asStateFlow()
-
-    private val _privateChatSheetPeer = MutableStateFlow<String?>(null)
-    val privateChatSheetPeer: StateFlow<String?> = _privateChatSheetPeer.asStateFlow()
-
-
-    private val _showSecurityVerificationSheet = MutableStateFlow(false)
-    val showSecurityVerificationSheet: StateFlow<Boolean> = _showSecurityVerificationSheet.asStateFlow()
-    
     // Location channels state (for Nostr geohash features)
     private val _selectedLocationChannel = MutableStateFlow<com.bitchat.android.geohash.ChannelID?>(com.bitchat.android.geohash.ChannelID.Mesh)
     val selectedLocationChannel: StateFlow<com.bitchat.android.geohash.ChannelID?> = _selectedLocationChannel.asStateFlow()
@@ -172,7 +160,6 @@ class ChatState(
     val pendingBackAction: StateFlow<BackAction> = combine(
         _showPasswordPrompt,
         _selectedPrivateChatPeer,
-        _privateChatSheetPeer,
         _currentChannel,
         ::backActionFor
     ).stateIn(
@@ -204,9 +191,6 @@ class ChatState(
     fun getPeerSessionStatesValue() = _peerSessionStates.value
     fun getPeerFingerprintsValue() = _peerFingerprints.value
     fun getGeohashPeopleValue() = _geohashPeople.value
-
-    fun getShowMeshPeerListValue() = _showMeshPeerList.value
-    fun getPrivateChatSheetPeerValue() = _privateChatSheetPeer.value
 
     fun getTeleportedGeoValue() = _teleportedGeo.value
     fun getGeohashParticipantCountsValue() = _geohashParticipantCounts.value
@@ -338,11 +322,6 @@ class ChatState(
         _peerDirect.value = direct
     }
     
-
-
-    fun setShowSecurityVerificationSheet(show: Boolean) {
-        _showSecurityVerificationSheet.value = show
-    }
     
     fun setSelectedLocationChannel(channel: com.bitchat.android.geohash.ChannelID?) {
         _selectedLocationChannel.value = channel
@@ -362,13 +341,4 @@ class ChatState(
     
     fun setGeohashParticipantCounts(counts: Map<String, Int>) {
         _geohashParticipantCounts.value = counts
-    }
-
-    fun setShowMeshPeerList(show: Boolean) {
-        _showMeshPeerList.value = show
-    }
-
-    fun setPrivateChatSheetPeer(peerID: String?) {
-        _privateChatSheetPeer.value = peerID
-    }
-}
+    }}

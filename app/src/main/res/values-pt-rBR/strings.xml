@@ -366,7 +366,6 @@
   <string name="fingerprint_their">impressão digital deles</string>
   <string name="fingerprint_yours">sua impressão digital</string>
   <string name="fingerprint_pending">handshake pendente</string>
-  <string name="fingerprint_no_peer">abra chat privado para ver</string>
   <string name="fingerprint_status_verified">criptografado e verificado</string>
   <string name="fingerprint_status_encrypted">criptografado</string>
   <string name="fingerprint_status_handshaking">handshake</string>

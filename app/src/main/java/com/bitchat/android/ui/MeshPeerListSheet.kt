@@ -80,10 +80,8 @@ import kotlinx.coroutines.delay
  * Extracted from ChatScreen.kt for better organization
  */
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeshPeerListSheet(
-    isPresented: Boolean,
     viewModel: ChatViewModel,
     onDismiss: () -> Unit,
     onShowVerification: () -> Unit,
@@ -146,11 +144,6 @@ fun MeshPeerListSheet(
     val sheetScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Bottom sheet state
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
     // Scroll state for animated top bar
     val listState = rememberLazyListState()
     val isScrolled by remember {
@@ -163,404 +156,386 @@ fun MeshPeerListSheet(
         label = "topBarAlpha"
     )
 
-    if (isPresented) {
-        BitchatBottomSheet(
-            modifier = modifier,
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
+    Box(modifier = modifier.fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 72.dp, bottom = 32.dp)
         ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 72.dp, bottom = 32.dp)
-                ) {
-                    val peopleCount = when (selectedLocationChannel) {
-                        is ChannelID.Location -> geohashPeopleCount
-                        else -> visibleConnectedPeers.count { it != viewModel.myPeerID }
-                    }
+            val peopleCount = when (selectedLocationChannel) {
+                is ChannelID.Location -> geohashPeopleCount
+                else -> visibleConnectedPeers.count { it != viewModel.myPeerID }
+            }
 
-                    item(key = "private_conversations_header") {
-                        SheetIconSectionHeader(
-                            iconRes = R.drawable.ic_spec_envelope,
-                            title = stringResource(R.string.conversations),
-                            modifier = Modifier.padding(top = 8.dp)
+            item(key = "private_conversations_header") {
+                SheetIconSectionHeader(
+                    iconRes = R.drawable.ic_spec_envelope,
+                    title = stringResource(R.string.conversations),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            if (conversations.size >= CONVERSATION_SEARCH_THRESHOLD) {
+                item(key = "private_conversations_search") {
+                    OutlinedTextField(
+                        value = conversationQuery,
+                        onValueChange = { conversationQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AboutHorizontalPadding)
+                            .padding(top = 10.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = BitchatFontFamily
+                        ),
+                        placeholder = {
+                            Text(
+                                stringResource(R.string.search_conversations),
+                                fontFamily = BitchatFontFamily
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Search, contentDescription = null)
+                        },
+                        trailingIcon = if (conversationQuery.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { conversationQuery = "" }) {
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = stringResource(R.string.clear)
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                }
+            }
+
+            when {
+                conversationStoreState is
+                    com.bitchat.android.services.ConversationStoreState.Loading &&
+                    conversations.isEmpty() -> {
+                    item(key = "private_conversations_loading") {
+                        ConversationSectionStatus(
+                            icon = { CircularProgressIndicator(Modifier.size(20.dp)) },
+                            text = stringResource(R.string.loading_conversations)
                         )
                     }
+                }
 
-                    if (conversations.size >= CONVERSATION_SEARCH_THRESHOLD) {
-                        item(key = "private_conversations_search") {
-                            OutlinedTextField(
-                                value = conversationQuery,
-                                onValueChange = { conversationQuery = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = AboutHorizontalPadding)
-                                    .padding(top = 10.dp),
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = BitchatFontFamily
-                                ),
-                                placeholder = {
-                                    Text(
-                                        stringResource(R.string.search_conversations),
-                                        fontFamily = BitchatFontFamily
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Outlined.Search, contentDescription = null)
-                                },
-                                trailingIcon = if (conversationQuery.isNotEmpty()) {
-                                    {
-                                        IconButton(onClick = { conversationQuery = "" }) {
-                                            Icon(
-                                                Icons.Outlined.Close,
-                                                contentDescription = stringResource(R.string.clear)
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    null
-                                },
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                        }
-                    }
-
-                    when {
-                        conversationStoreState is
-                            com.bitchat.android.services.ConversationStoreState.Loading &&
-                            conversations.isEmpty() -> {
-                            item(key = "private_conversations_loading") {
-                                ConversationSectionStatus(
-                                    icon = { CircularProgressIndicator(Modifier.size(20.dp)) },
-                                    text = stringResource(R.string.loading_conversations)
+                conversationStoreState is
+                    com.bitchat.android.services.ConversationStoreState.Error &&
+                    conversations.isEmpty() -> {
+                    item(key = "private_conversations_error") {
+                        ConversationSectionStatus(
+                            icon = {
+                                Icon(
+                                    Icons.Outlined.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
                                 )
-                            }
-                        }
-
-                        conversationStoreState is
-                            com.bitchat.android.services.ConversationStoreState.Error &&
-                            conversations.isEmpty() -> {
-                            item(key = "private_conversations_error") {
-                                ConversationSectionStatus(
-                                    icon = {
-                                        Icon(
-                                            Icons.Outlined.Warning,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    },
-                                    text = stringResource(R.string.conversation_storage_error)
-                                )
-                            }
-                        }
-
-                        conversations.isEmpty() -> {
-                            item(key = "private_conversations_empty") {
-                                ConversationSectionStatus(
-                                    icon = {
-                                        Icon(
-                                            painterResource(R.drawable.ic_spec_envelope),
-                                            contentDescription = null
-                                        )
-                                    },
-                                    text = stringResource(R.string.no_conversations_yet)
-                                )
-                            }
-                        }
-
-                        filteredConversations.isEmpty() -> {
-                            item(key = "private_conversations_no_results") {
-                                ConversationSectionStatus(
-                                    icon = {
-                                        Icon(Icons.Outlined.SearchOff, contentDescription = null)
-                                    },
-                                    text = stringResource(R.string.no_conversation_results)
-                                )
-                            }
-                        }
+                            },
+                            text = stringResource(R.string.conversation_storage_error)
+                        )
                     }
+                }
 
-                    if (onlineConversations.isNotEmpty()) {
-                        item(key = "private_conversations_online_label") {
-                            ConversationGroupLabel(
-                                text = stringResource(R.string.online_conversations)
-                            )
-                        }
-                        itemsIndexed(
-                            items = onlineConversations,
-                            key = { _, conversation ->
-                                "conversation:${conversation.conversationID}"
-                            }
-                        ) { index, conversation ->
-                            ConversationSwipeItem(
-                                conversation = conversation,
-                                directPeerIdentityIDs = directPeerIdentityIDs,
-                                wifiAwareIdentityIDs = wifiAwareIdentityIDs,
-                                viewModel = viewModel,
-                                isFirst = index == 0,
-                                isLast = index == onlineConversations.lastIndex,
-                                onPrivateChatStart = { conversationID ->
-                                    viewModel.showPrivateChatSheet(conversationID)
-                                    onDismiss()
-                                },
-                                onDeleteRequested = { pendingConversationDelete = it },
-                                onReadStateRequested = { item, isRead ->
-                                    sheetScope.launch {
-                                        viewModel.setConversationRead(item.conversationID, isRead)
-                                    }
-                                },
-                                modifier = Modifier.animateItem()
-                            )
-                        }
+                conversations.isEmpty() -> {
+                    item(key = "private_conversations_empty") {
+                        ConversationSectionStatus(
+                            icon = {
+                                Icon(
+                                    painterResource(R.drawable.ic_spec_envelope),
+                                    contentDescription = null
+                                )
+                            },
+                            text = stringResource(R.string.no_conversations_yet)
+                        )
                     }
+                }
 
-                    if (offlineConversations.isNotEmpty()) {
-                        item(key = "private_conversations_offline_label") {
-                            ConversationGroupLabel(
-                                text = stringResource(R.string.offline_conversations)
-                            )
-                        }
-                        itemsIndexed(
-                            items = offlineConversations,
-                            key = { _, conversation ->
-                                "conversation:${conversation.conversationID}"
-                            }
-                        ) { index, conversation ->
-                            ConversationSwipeItem(
-                                conversation = conversation,
-                                directPeerIdentityIDs = directPeerIdentityIDs,
-                                wifiAwareIdentityIDs = wifiAwareIdentityIDs,
-                                viewModel = viewModel,
-                                isFirst = index == 0,
-                                isLast = index == offlineConversations.lastIndex,
-                                onPrivateChatStart = { conversationID ->
-                                    viewModel.showPrivateChatSheet(conversationID)
-                                    onDismiss()
-                                },
-                                onDeleteRequested = { pendingConversationDelete = it },
-                                onReadStateRequested = { item, isRead ->
-                                    sheetScope.launch {
-                                        viewModel.setConversationRead(item.conversationID, isRead)
-                                    }
-                                },
-                                modifier = Modifier.animateItem()
-                            )
-                        }
+                filteredConversations.isEmpty() -> {
+                    item(key = "private_conversations_no_results") {
+                        ConversationSectionStatus(
+                            icon = {
+                                Icon(Icons.Outlined.SearchOff, contentDescription = null)
+                            },
+                            text = stringResource(R.string.no_conversation_results)
+                        )
                     }
+                }
+            }
 
-                    // Channels section
-                    if (joinedChannels.isNotEmpty()) {
-                        item(key = "channels_section") {
+            if (onlineConversations.isNotEmpty()) {
+                item(key = "private_conversations_online_label") {
+                    ConversationGroupLabel(
+                        text = stringResource(R.string.online_conversations)
+                    )
+                }
+                itemsIndexed(
+                    items = onlineConversations,
+                    key = { _, conversation ->
+                        "conversation:${conversation.conversationID}"
+                    }
+                ) { index, conversation ->
+                    ConversationSwipeItem(
+                        conversation = conversation,
+                        directPeerIdentityIDs = directPeerIdentityIDs,
+                        wifiAwareIdentityIDs = wifiAwareIdentityIDs,
+                        viewModel = viewModel,
+                        isFirst = index == 0,
+                        isLast = index == onlineConversations.lastIndex,
+                        onPrivateChatStart = viewModel::openPrivateChat,
+                        onDeleteRequested = { pendingConversationDelete = it },
+                        onReadStateRequested = { item, isRead ->
+                            sheetScope.launch {
+                                viewModel.setConversationRead(item.conversationID, isRead)
+                            }
+                        },
+                        modifier = Modifier.animateItem()
+                    )
+                }
+            }
+
+            if (offlineConversations.isNotEmpty()) {
+                item(key = "private_conversations_offline_label") {
+                    ConversationGroupLabel(
+                        text = stringResource(R.string.offline_conversations)
+                    )
+                }
+                itemsIndexed(
+                    items = offlineConversations,
+                    key = { _, conversation ->
+                        "conversation:${conversation.conversationID}"
+                    }
+                ) { index, conversation ->
+                    ConversationSwipeItem(
+                        conversation = conversation,
+                        directPeerIdentityIDs = directPeerIdentityIDs,
+                        wifiAwareIdentityIDs = wifiAwareIdentityIDs,
+                        viewModel = viewModel,
+                        isFirst = index == 0,
+                        isLast = index == offlineConversations.lastIndex,
+                        onPrivateChatStart = viewModel::openPrivateChat,
+                        onDeleteRequested = { pendingConversationDelete = it },
+                        onReadStateRequested = { item, isRead ->
+                            sheetScope.launch {
+                                viewModel.setConversationRead(item.conversationID, isRead)
+                            }
+                        },
+                        modifier = Modifier.animateItem()
+                    )
+                }
+            }
+
+            // Channels section
+            if (joinedChannels.isNotEmpty()) {
+                item(key = "channels_section") {
+                    Column {
+                        SheetIconSectionHeader(
+                            iconRes = R.drawable.ic_spec_chat_bubbles,
+                            title = stringResource(R.string.channels),
+                            modifier = Modifier.padding(
+                                top = if (conversations.isNotEmpty()) 20.dp else 8.dp
+                            )
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AboutHorizontalPadding)
+                                .padding(top = 10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = AboutCardShape
+                        ) {
                             Column {
-                                SheetIconSectionHeader(
-                                    iconRes = R.drawable.ic_spec_chat_bubbles,
-                                    title = stringResource(R.string.channels),
-                                    modifier = Modifier.padding(
-                                        top = if (conversations.isNotEmpty()) 20.dp else 8.dp
+                                joinedChannels.toList().forEachIndexed { index, channel ->
+                                    if (index > 0) SheetCardDivider()
+                                    val isSelected = channel == currentChannel
+                                    val unreadCount = unreadChannelMessages[channel] ?: 0
+                                    ChannelRow(
+                                        channel = channel,
+                                        isSelected = isSelected,
+                                        unreadCount = unreadCount,
+                                        colorScheme = colorScheme,
+                                        onChannelClick = {
+                                            if (channel.startsWith("@")) {
+                                                val peerName = channel.removePrefix("@")
+                                                val peerID =
+                                                    peerNicknames.entries.firstOrNull { it.value == peerName }?.key
+                                                if (peerID != null) {
+                                                    viewModel.openPrivateChat(peerID)
+                                                }
+                                            } else {
+                                                viewModel.switchToChannel(channel)
+                                                onDismiss()
+                                            }
+                                        },
+                                        onLeaveChannel = {
+                                            viewModel.leaveChannel(channel)
+                                        },
                                     )
-                                )
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = AboutHorizontalPadding)
-                                        .padding(top = 10.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    shape = AboutCardShape
-                                ) {
-                                    Column {
-                                        joinedChannels.toList().forEachIndexed { index, channel ->
-                                            if (index > 0) SheetCardDivider()
-                                            val isSelected = channel == currentChannel
-                                            val unreadCount = unreadChannelMessages[channel] ?: 0
-                                            ChannelRow(
-                                                channel = channel,
-                                                isSelected = isSelected,
-                                                unreadCount = unreadCount,
-                                                colorScheme = colorScheme,
-                                                onChannelClick = {
-                                                    if (channel.startsWith("@")) {
-                                                        val peerName = channel.removePrefix("@")
-                                                        val peerID =
-                                                            peerNicknames.entries.firstOrNull { it.value == peerName }?.key
-                                                        if (peerID != null) {
-                                                            viewModel.showPrivateChatSheet(peerID)
-                                                            onDismiss()
-                                                        }
-                                                    } else {
-                                                        viewModel.switchToChannel(channel)
-                                                        onDismiss()
-                                                    }
-                                                },
-                                                onLeaveChannel = {
-                                                    viewModel.leaveChannel(channel)
-                                                },
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }
                     }
+                }
+            }
 
-                    // People / geohash participants
-                    item(key = "people_section") {
-                        when (selectedLocationChannel) {
-                            is ChannelID.Location -> {
-                                GeohashPeopleList(
-                                    viewModel = viewModel,
-                                    onTapPerson = onDismiss,
-                                    excludedIdentityAliases = conversationIdentityAliases,
-                                    modifier = Modifier.padding(
-                                        top = if (
-                                            joinedChannels.isNotEmpty() ||
-                                            conversations.isNotEmpty()
-                                        ) 20.dp else 8.dp
-                                    )
-                                )
-                            }
+            // People / geohash participants
+            item(key = "people_section") {
+                when (selectedLocationChannel) {
+                    is ChannelID.Location -> {
+                        GeohashPeopleList(
+                            viewModel = viewModel,
+                            onTapPerson = onDismiss,
+                            excludedIdentityAliases = conversationIdentityAliases,
+                            modifier = Modifier.padding(
+                                top = if (
+                                    joinedChannels.isNotEmpty() ||
+                                    conversations.isNotEmpty()
+                                ) 20.dp else 8.dp
+                            )
+                        )
+                    }
 
-                            else -> {
-                                PeopleSection(
-                                    modifier = Modifier.padding(
-                                        top = if (
-                                            joinedChannels.isNotEmpty() ||
-                                            conversations.isNotEmpty()
-                                        ) 20.dp else 8.dp
-                                    ),
-                                    connectedPeers = visibleConnectedPeers,
-                                    peerNicknames = peerNicknames,
-                                    peerRSSI = peerRSSI,
-                                    nickname = nickname,
-                                    colorScheme = colorScheme,
-                                    selectedPrivatePeer = selectedPrivatePeer,
-                                    wifiAwarePeerIDs = wifiAwarePeerIDs,
-                                    peopleCount = peopleCount,
-                                    excludedIdentityAliases = conversationIdentityAliases,
-                                    viewModel = viewModel,
-                                    onPrivateChatStart = { peerID ->
-                                        viewModel.showPrivateChatSheet(peerID)
-                                        onDismiss()
-                                    }
-                                )
-                            }
-                        }
+                    else -> {
+                        PeopleSection(
+                            modifier = Modifier.padding(
+                                top = if (
+                                    joinedChannels.isNotEmpty() ||
+                                    conversations.isNotEmpty()
+                                ) 20.dp else 8.dp
+                            ),
+                            connectedPeers = visibleConnectedPeers,
+                            peerNicknames = peerNicknames,
+                            peerRSSI = peerRSSI,
+                            nickname = nickname,
+                            colorScheme = colorScheme,
+                            selectedPrivatePeer = selectedPrivatePeer,
+                            wifiAwarePeerIDs = wifiAwarePeerIDs,
+                            peopleCount = peopleCount,
+                            excludedIdentityAliases = conversationIdentityAliases,
+                            viewModel = viewModel,
+                            onPrivateChatStart = viewModel::openPrivateChat
+                        )
                     }
                 }
-
-                // TopBar (animated)
-                BitchatSheetTopBar(
-                    title = {
-                        BitchatSheetTitle(text = stringResource(id = R.string.your_network))
-                    },
-                    backgroundAlpha = topBarAlpha,
-                    actions = {
-                        if (selectedLocationChannel !is ChannelID.Location) {
-                            IconButton(
-                                onClick = onShowVerification,
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.QrCode,
-                                    contentDescription = stringResource(R.string.verify_title),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    },
-                    onClose = onDismiss,
-                )
-
-                SnackbarHost(
-                    hostState = snackbarHostState,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                )
             }
         }
 
-        pendingConversationDelete?.let { conversation ->
-            val deleteFailedMessage = stringResource(R.string.conversation_delete_failed)
-            val deletedMessage = stringResource(
-                R.string.conversation_deleted,
-                conversation.displayName
-            )
-            val undoLabel = stringResource(R.string.undo)
-            val restoreFailedMessage =
-                stringResource(R.string.conversation_restore_failed)
-            AlertDialog(
-                onDismissRequest = { pendingConversationDelete = null },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = null
-                    )
-                },
-                title = {
-                    Text(
-                        text = stringResource(R.string.delete_conversation_title),
-                        fontFamily = BitchatFontFamily
-                    )
-                },
-                text = {
-                    Text(
-                        text = stringResource(
-                            R.string.delete_conversation_message,
-                            conversation.displayName
-                        ),
-                        fontFamily = BitchatFontFamily
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            pendingConversationDelete = null
-                            sheetScope.launch {
-                                val deletion = viewModel.deletePrivateConversation(
-                                    conversation.conversationID
-                                )
-                                if (deletion == null) {
-                                    snackbarHostState.showSnackbar(
-                                        message = deleteFailedMessage
-                                    )
-                                    return@launch
-                                }
-                                val result = snackbarHostState.showSnackbar(
-                                    message = deletedMessage,
-                                    actionLabel = undoLabel,
-                                    withDismissAction = true,
-                                    duration = SnackbarDuration.Long
-                                )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    if (!viewModel.restoreDeletedConversation(deletion)) {
-                                        snackbarHostState.showSnackbar(
-                                            restoreFailedMessage
-                                        )
-                                    }
-                                }
-                            }
-                        }
+        // TopBar (animated)
+        BitchatSheetTopBar(
+            title = {
+                BitchatSheetTitle(text = stringResource(id = R.string.your_network))
+            },
+            backgroundAlpha = topBarAlpha,
+            actions = {
+                if (selectedLocationChannel !is ChannelID.Location) {
+                    IconButton(
+                        onClick = onShowVerification,
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.delete),
-                            color = MaterialTheme.colorScheme.error,
-                            fontFamily = BitchatFontFamily
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingConversationDelete = null }) {
-                        Text(
-                            text = stringResource(android.R.string.cancel),
-                            fontFamily = BitchatFontFamily
+                        Icon(
+                            imageVector = Icons.Outlined.QrCode,
+                            contentDescription = stringResource(R.string.verify_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
-            )
-        }
+            },
+            onClose = onDismiss,
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
+    }
+
+    pendingConversationDelete?.let { conversation ->
+        val deleteFailedMessage = stringResource(R.string.conversation_delete_failed)
+        val deletedMessage = stringResource(
+            R.string.conversation_deleted,
+            conversation.displayName
+        )
+        val undoLabel = stringResource(R.string.undo)
+        val restoreFailedMessage =
+            stringResource(R.string.conversation_restore_failed)
+        AlertDialog(
+            onDismissRequest = { pendingConversationDelete = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = null
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.delete_conversation_title),
+                    fontFamily = BitchatFontFamily
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(
+                        R.string.delete_conversation_message,
+                        conversation.displayName
+                    ),
+                    fontFamily = BitchatFontFamily
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingConversationDelete = null
+                        sheetScope.launch {
+                            val deletion = viewModel.deletePrivateConversation(
+                                conversation.conversationID
+                            )
+                            if (deletion == null) {
+                                snackbarHostState.showSnackbar(
+                                    message = deleteFailedMessage
+                                )
+                                return@launch
+                            }
+                            val result = snackbarHostState.showSnackbar(
+                                message = deletedMessage,
+                                actionLabel = undoLabel,
+                                withDismissAction = true,
+                                duration = SnackbarDuration.Long
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                if (!viewModel.restoreDeletedConversation(deletion)) {
+                                    snackbarHostState.showSnackbar(
+                                        restoreFailedMessage
+                                    )
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error,
+                        fontFamily = BitchatFontFamily
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConversationDelete = null }) {
+                    Text(
+                        text = stringResource(android.R.string.cancel),
+                        fontFamily = BitchatFontFamily
+                    )
+                }
+            }
+        )
     }
 }
 
@@ -1667,14 +1642,16 @@ private fun convertRSSIToSignalStrength(rssi: Int?): Int {
 }
 
 /**
- * Nested Private Chat Sheet - iOS-style nested bottom sheet
+ * A private conversation, the content of a sheet destination.
+ *
+ * [peerID] is the conversation to show. Selecting it here, rather than where
+ * it was opened, lets the chat come back when its entry is restored.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivateChatSheet(
-    isPresented: Boolean,
     peerID: String,
     viewModel: ChatViewModel,
+    onShowSecurityVerification: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -1799,178 +1776,168 @@ fun PrivateChatSheet(
         animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
         label = "favoriteStarTint"
     )
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
 
-    if (isPresented) {
-        BitchatBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Spacer(modifier = Modifier.height(ChatHeaderHeight))
+            Spacer(modifier = Modifier.height(ChatHeaderHeight))
 
-                    HorizontalDivider(thickness = 1.dp, color = colorScheme.outlineVariant)
+            HorizontalDivider(thickness = 1.dp, color = colorScheme.outlineVariant)
 
-                    // Messages list
-                    var forceScrollToBottom by remember { mutableStateOf(false) }
-                    var isScrolledUp by remember { mutableStateOf(false) }
+            // Messages list
+            var forceScrollToBottom by remember { mutableStateOf(false) }
+            var isScrolledUp by remember { mutableStateOf(false) }
 
-                    MessagesList(
-                        messages = messages,
-                        currentUserNickname = nickname,
-                        meshService = viewModel.meshServiceFacade,
-                        modifier = Modifier.weight(1f),
-                        conversationKey = "dm:$peerID",
-                        forceScrollToBottom = forceScrollToBottom,
-                        onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
-                        onNicknameClick = { /* handle mention */ },
-                        onMessageLongPress = { /* handle long press */ },
-                        onCancelTransfer = { msg -> viewModel.cancelMediaSend(msg.id) },
-                        onImageClick = { _, _, _ -> /* handle image click */ }
+            MessagesList(
+                messages = messages,
+                currentUserNickname = nickname,
+                meshService = viewModel.meshServiceFacade,
+                modifier = Modifier.weight(1f),
+                conversationKey = "dm:$peerID",
+                forceScrollToBottom = forceScrollToBottom,
+                onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
+                onNicknameClick = { /* handle mention */ },
+                onMessageLongPress = { /* handle long press */ },
+                onCancelTransfer = { msg -> viewModel.cancelMediaSend(msg.id) },
+                onImageClick = { _, _, _ -> /* handle image click */ }
+            )
+
+            // Input section. No divider here: ChatInputSection draws its own fade and
+            // hairline.
+            var messageText by remember(peerID) {
+                mutableStateOf(
+                    androidx.compose.ui.text.input.TextFieldValue(
+                        viewModel.conversationDraft(peerID)
                     )
+                )
+            }
 
-                    // Input section. No divider here: ChatInputSection draws its own fade and
-                    // hairline.
-                    var messageText by remember(peerID) {
-                        mutableStateOf(
-                            androidx.compose.ui.text.input.TextFieldValue(
-                                viewModel.conversationDraft(peerID)
-                            )
+            ChatInputSection(
+                messageText = messageText,
+                onMessageTextChange = { newText ->
+                    messageText = newText
+                    viewModel.setConversationDraft(peerID, newText.text)
+                    // Do not update the shared suggestion state here: this sheet
+                    // renders its own popups as hidden, so an update only leaves
+                    // a stale popup behind for the main composer.
+                },
+                onSend = {
+                    if (messageText.text.trim().isNotEmpty()) {
+                        viewModel.sendMessage(messageText.text.trim()) { accepted ->
+                            if (accepted) {
+                                messageText =
+                                    androidx.compose.ui.text.input.TextFieldValue("")
+                                viewModel.setConversationDraft(peerID, "")
+                                forceScrollToBottom = !forceScrollToBottom
+                            }
+                        }
+                    }
+                },
+                onSendVoiceNote = { peer, channel, path ->
+                    viewModel.sendVoiceNote(peer, channel, path)
+                },
+                onSendImageNote = { peer, channel, path ->
+                    viewModel.sendImageNote(peer, channel, path)
+                },
+                onSendFileNote = { peer, channel, path ->
+                    viewModel.sendFileNote(peer, channel, path)
+                },
+                recorderFactory = viewModel::createVoiceRecorder,
+                showCommandSuggestions = false,
+                commandSuggestions = emptyList(),
+                showMentionSuggestions = false,
+                mentionSuggestions = emptyList(),
+                onCommandSuggestionClick = { },
+                onMentionSuggestionClick = { },
+                selectedPrivatePeer = peerID,
+                currentChannel = null,
+                nickname = nickname,
+                colorScheme = colorScheme,
+                showMediaButtons = true
+            )
+        }
+
+        // Header. Built from the same tokens as the main chat header rather than a
+        // TopAppBar, so moving between the timeline and a conversation does not shift the
+        // bar's height, insets or type.
+        Surface(
+            modifier = Modifier.align(Alignment.TopCenter),
+            color = colorScheme.background
+        ) {
+            ConversationHeader(
+                leadingIconRes = conversationTransportIcon(
+                    isReachedOverInternet = isNostrPeer || isNostrReachableFavorite,
+                    isWifiAware = isWifiAware,
+                    isDirect = isDirect
+                ),
+                leadingIconTint = colorScheme.primary,
+                leadingContentDescription = when {
+                    isNostrPeer || isNostrReachableFavorite ->
+                        stringResource(R.string.cd_nostr_reachable)
+                    else -> null
+                },
+                title = titleText
+            ) {
+                ConversationHeaderAction(
+                    onClick = { viewModel.toggleFavorite(peerID) },
+                    contentDescription = if (isFavorite) {
+                        stringResource(R.string.cd_remove_favorite)
+                    } else {
+                        stringResource(R.string.cd_add_favorite)
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (isFavorite) {
+                                R.drawable.ic_spec_star_filled
+                            } else {
+                                R.drawable.ic_spec_star
+                            }
+                        ),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(HeaderIconSize)
+                            .graphicsLayer {
+                                rotationZ = starWobbleRotation.value
+                                scaleX = starWobbleScale.value
+                                scaleY = starWobbleScale.value
+                            },
+                        tint = favoriteStarTint
+                    )
+                }
+
+                if (isVerified) {
+                    ConversationHeaderStatus {
+                        Icon(
+                            imageVector = Icons.Filled.Verified,
+                            contentDescription = stringResource(
+                                R.string.fingerprint_verified_label
+                            ),
+                            modifier = Modifier.size(HeaderIconSize),
+                            tint = colorScheme.primary
                         )
                     }
-
-                    ChatInputSection(
-                        messageText = messageText,
-                        onMessageTextChange = { newText ->
-                            messageText = newText
-                            viewModel.setConversationDraft(peerID, newText.text)
-                            // Do not update the shared suggestion state here: this sheet
-                            // renders its own popups as hidden, so an update only leaves
-                            // a stale popup behind for the main composer.
-                        },
-                        onSend = {
-                            if (messageText.text.trim().isNotEmpty()) {
-                                viewModel.sendMessage(messageText.text.trim()) { accepted ->
-                                    if (accepted) {
-                                        messageText =
-                                            androidx.compose.ui.text.input.TextFieldValue("")
-                                        viewModel.setConversationDraft(peerID, "")
-                                        forceScrollToBottom = !forceScrollToBottom
-                                    }
-                                }
-                            }
-                        },
-                        onSendVoiceNote = { peer, channel, path ->
-                            viewModel.sendVoiceNote(peer, channel, path)
-                        },
-                        onSendImageNote = { peer, channel, path ->
-                            viewModel.sendImageNote(peer, channel, path)
-                        },
-                        onSendFileNote = { peer, channel, path ->
-                            viewModel.sendFileNote(peer, channel, path)
-                        },
-                        recorderFactory = viewModel::createVoiceRecorder,
-                        showCommandSuggestions = false,
-                        commandSuggestions = emptyList(),
-                        showMentionSuggestions = false,
-                        mentionSuggestions = emptyList(),
-                        onCommandSuggestionClick = { },
-                        onMentionSuggestionClick = { },
-                        selectedPrivatePeer = peerID,
-                        currentChannel = null,
-                        nickname = nickname,
-                        colorScheme = colorScheme,
-                        showMediaButtons = true
-                    )
                 }
 
-                // Header. Built from the same tokens as the main chat header rather than a
-                // TopAppBar, so moving between the timeline and a conversation does not shift the
-                // bar's height, insets or type.
-                Surface(
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    color = colorScheme.background
-                ) {
-                    ConversationHeader(
-                        leadingIconRes = conversationTransportIcon(
-                            isReachedOverInternet = isNostrPeer || isNostrReachableFavorite,
-                            isWifiAware = isWifiAware,
-                            isDirect = isDirect
-                        ),
-                        leadingIconTint = colorScheme.primary,
-                        leadingContentDescription = when {
-                            isNostrPeer || isNostrReachableFavorite ->
-                                stringResource(R.string.cd_nostr_reachable)
-                            else -> null
-                        },
-                        title = titleText
+                // Keep the lock nearest the close action: from right to left the security
+                // cluster reads close, encryption, verification, then favorite.
+                if (!isNostrPeer && !isNostrReachableFavorite) {
+                    ConversationHeaderAction(
+                        onClick = onShowSecurityVerification,
+                        contentDescription = stringResource(R.string.verify_title)
                     ) {
-                        ConversationHeaderAction(
-                            onClick = { viewModel.toggleFavorite(peerID) },
-                            contentDescription = if (isFavorite) {
-                                stringResource(R.string.cd_remove_favorite)
-                            } else {
-                                stringResource(R.string.cd_add_favorite)
-                            }
-                        ) {
-                            Icon(
-                                painter = painterResource(
-                                    if (isFavorite) {
-                                        R.drawable.ic_spec_star_filled
-                                    } else {
-                                        R.drawable.ic_spec_star
-                                    }
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(HeaderIconSize)
-                                    .graphicsLayer {
-                                        rotationZ = starWobbleRotation.value
-                                        scaleX = starWobbleScale.value
-                                        scaleY = starWobbleScale.value
-                                    },
-                                tint = favoriteStarTint
+                        Box(contentAlignment = Alignment.Center) {
+                            NoiseSessionIcon(
+                                sessionState = sessionState,
+                                modifier = Modifier.size(HeaderIconSize)
                             )
                         }
-
-                        if (isVerified) {
-                            ConversationHeaderStatus {
-                                Icon(
-                                    imageVector = Icons.Filled.Verified,
-                                    contentDescription = stringResource(
-                                        R.string.fingerprint_verified_label
-                                    ),
-                                    modifier = Modifier.size(HeaderIconSize),
-                                    tint = colorScheme.primary
-                                )
-                            }
-                        }
-
-                        // Keep the lock nearest the close action: from right to left the security
-                        // cluster reads close, encryption, verification, then favorite.
-                        if (!isNostrPeer && !isNostrReachableFavorite) {
-                            ConversationHeaderAction(
-                                onClick = { viewModel.showSecurityVerificationSheet() },
-                                contentDescription = stringResource(R.string.verify_title)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    NoiseSessionIcon(
-                                        sessionState = sessionState,
-                                        modifier = Modifier.size(HeaderIconSize)
-                                    )
-                                }
-                            }
-                        }
-
-                        val dismiss = LocalSheetDismiss.current
-                        CloseButton(onClick = { dismiss?.invoke() ?: onDismiss() })
                     }
                 }
+
+                val dismiss = LocalSheetDismiss.current
+                CloseButton(onClick = { dismiss?.invoke() ?: onDismiss() })
             }
         }
     }

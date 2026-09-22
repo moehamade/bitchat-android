@@ -367,7 +367,6 @@
   <string name="fingerprint_their">ihr fingerabdruck</string>
   <string name="fingerprint_yours">dein fingerabdruck</string>
   <string name="fingerprint_pending">handshake ausstehend</string>
-  <string name="fingerprint_no_peer">privatchat öffnen</string>
   <string name="fingerprint_status_verified">verschlüsselt &amp; verifiziert</string>
   <string name="fingerprint_status_encrypted">verschlüsselt</string>
   <string name="fingerprint_status_handshaking">handshake</string>

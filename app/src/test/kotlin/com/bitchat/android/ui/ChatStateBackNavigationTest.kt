@@ -67,16 +67,11 @@ class ChatStateBackNavigationTest {
         assertNull(state.getPasswordPromptChannelValue())
     }
 
+    // A private chat started with /msg selects the conversation without opening
+    // its screen, which is a route with its own Back handling.
     @Test
     fun `a selected private chat is unwound`() {
         state.setSelectedPrivateChatPeer("peer-a")
-
-        assertEquals(BackAction.ExitPrivateChat, state.pendingBackAction())
-    }
-
-    @Test
-    fun `the private chat sheet is unwound by the same branch as a selected chat`() {
-        state.setPrivateChatSheetPeer("peer-a")
 
         assertEquals(BackAction.ExitPrivateChat, state.pendingBackAction())
     }

@@ -272,7 +272,6 @@
   <string name="fingerprint_their">cap jari mereka</string>
   <string name="fingerprint_yours">cap jari anda</string>
   <string name="fingerprint_pending">jabat tangan tertangguh</string>
-  <string name="fingerprint_no_peer">buka sembang peribadi untuk melihat cap jari</string>
   <string name="fingerprint_status_verified">disulitkan &amp; disahkan</string>
   <string name="fingerprint_status_encrypted">disulitkan</string>
   <string name="fingerprint_status_handshaking">berjabat tangan</string>

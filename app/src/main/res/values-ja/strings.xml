@@ -366,7 +366,6 @@
   <string name="fingerprint_their">相手の指紋</string>
   <string name="fingerprint_yours">あなたの指紋</string>
   <string name="fingerprint_pending">ハンドシェイク保留中</string>
-  <string name="fingerprint_no_peer">指紋を見るにはプライベートチャットを開いてください</string>
   <string name="fingerprint_status_verified">暗号化＆検証済み</string>
   <string name="fingerprint_status_encrypted">暗号化済み</string>
   <string name="fingerprint_status_handshaking">ハンドシェイク中</string>

@@ -40,6 +40,7 @@ import com.bitchat.android.geohash.GeohashChannelLevel
 import com.bitchat.android.geohash.LocationChannelManager
 import com.bitchat.android.nostr.LocationNotesManager
 import com.bitchat.android.nostr.NearbyNotesController
+import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.ui.media.FullScreenImageViewer
 import com.bitchat.android.ui.theme.BitchatMotion
 
@@ -61,8 +62,12 @@ fun ChatScreen(
     onShowAbout: () -> Unit,
     onShowLocationNotes: () -> Unit,
     onShowChatUser: (nickname: String, messageId: String) -> Unit,
-    onShowVerificationFromPeerList: () -> Unit,
     onShowLocationChannels: () -> Unit,
+    onShowPeerList: () -> Unit,
+    // The private chat shown over this screen, if any. It comes from the back
+    // stack, and covers the moment between opening the chat and the ViewModel
+    // selecting it, when the selection is still empty.
+    openPrivateChatID: String?,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -81,9 +86,6 @@ fun ChatScreen(
     val commandSuggestions by viewModel.commandSuggestions.collectAsStateWithLifecycle()
     val showMentionSuggestions by viewModel.showMentionSuggestions.collectAsStateWithLifecycle()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
-    val showMeshPeerListSheet by viewModel.showMeshPeerList.collectAsStateWithLifecycle()
-    val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
-    val showSecurityVerificationSheet by viewModel.showSecurityVerificationSheet.collectAsStateWithLifecycle()
     val legacyPrivateMediaConsent by viewModel.legacyPrivateMediaConsent.collectAsStateWithLifecycle()
 
     val showPasswordPrompt by viewModel.showPasswordPrompt.collectAsStateWithLifecycle()
@@ -123,16 +125,20 @@ fun ChatScreen(
     val buildingGeohash = availableLocationChannels
         .firstOrNull { it.level == GeohashChannelLevel.BUILDING }
         ?.geohash
+    // The open chat wins over the selection, which trails it until the chat has
+    // started and may still name a chat begun with /msg. Keyed on the selection
+    // too, so the id is canonicalized again as the conversation resolves.
+    val visiblePrivatePeer = remember(openPrivateChatID, selectedPrivatePeer) {
+        openPrivateChatID?.let(ContactDirectory::canonicalConversationId) ?: selectedPrivatePeer
+    }
     val isMeshTimeline =
         currentChannel == null &&
             selectedLocationChannel is ChannelID.Mesh &&
-            selectedPrivatePeer == null &&
-            privateChatSheetPeer == null
+            visiblePrivatePeer == null
 
-    LaunchedEffect(isMeshTimeline, privateChatSheetPeer, selectedPrivatePeer) {
+    LaunchedEffect(isMeshTimeline, visiblePrivatePeer) {
         when {
-            privateChatSheetPeer != null -> liveVoiceManager.showDirectMessage(privateChatSheetPeer!!)
-            selectedPrivatePeer != null -> liveVoiceManager.showDirectMessage(selectedPrivatePeer!!)
+            visiblePrivatePeer != null -> liveVoiceManager.showDirectMessage(visiblePrivatePeer)
             isMeshTimeline -> liveVoiceManager.showPublicMesh()
             else -> liveVoiceManager.clearVisibleConversation()
         }
@@ -416,7 +422,7 @@ fun ChatScreen(
             nickname = nickname,
             viewModel = viewModel,
             colorScheme = colorScheme,
-            onSidebarToggle = { viewModel.showMeshPeerList() },
+            onSidebarToggle = onShowPeerList,
             onShowAppInfo = onShowAbout,
             onPanicClear = { viewModel.panicClearAllData() },
             onLocationChannelsClick = onShowLocationChannels,
@@ -495,12 +501,6 @@ fun ChatScreen(
             showPasswordDialog = false
             passwordInput = ""
         },
-        viewModel = viewModel,
-        onShowVerificationFromPeerList = onShowVerificationFromPeerList,
-        showSecurityVerificationSheet = showSecurityVerificationSheet,
-        onSecurityVerificationSheetDismiss = viewModel::hideSecurityVerificationSheet,
-        showMeshPeerListSheet = showMeshPeerListSheet,
-        onMeshPeerListDismiss = viewModel::hideMeshPeerList,
     )
 
     legacyPrivateMediaConsent?.let { request ->
@@ -765,15 +765,7 @@ private fun ChatDialogs(
     onPasswordChange: (String) -> Unit,
     onPasswordConfirm: () -> Unit,
     onPasswordDismiss: () -> Unit,
-    viewModel: ChatViewModel,
-    onShowVerificationFromPeerList: () -> Unit,
-    showSecurityVerificationSheet: Boolean,
-    onSecurityVerificationSheetDismiss: () -> Unit,
-    showMeshPeerListSheet: Boolean,
-    onMeshPeerListDismiss: () -> Unit,
 ) {
-    val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
-
     // Password dialog
     PasswordPromptDialog(
         show = showPasswordDialog,
@@ -783,37 +775,4 @@ private fun ChatDialogs(
         onConfirm = onPasswordConfirm,
         onDismiss = onPasswordDismiss
     )
-
-    // MeshPeerList sheet (network view)
-    if (showMeshPeerListSheet){
-        MeshPeerListSheet(
-            isPresented = showMeshPeerListSheet,
-            viewModel = viewModel,
-            onDismiss = onMeshPeerListDismiss,
-            onShowVerification = {
-                onMeshPeerListDismiss()
-                onShowVerificationFromPeerList()
-            }
-        )
-    }
-
-    if (showSecurityVerificationSheet) {
-        SecurityVerificationSheet(
-            isPresented = showSecurityVerificationSheet,
-            onDismiss = onSecurityVerificationSheetDismiss,
-            viewModel = viewModel
-        )
-    }
-
-    if (privateChatSheetPeer != null) {
-        PrivateChatSheet(
-            isPresented = true,
-            peerID = privateChatSheetPeer!!,
-            viewModel = viewModel,
-            onDismiss = {
-                viewModel.hidePrivateChatSheet()
-                viewModel.endPrivateChat()
-            }
-        )
-    }
 }

@@ -46,6 +46,9 @@ import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatUserSheet
 import com.bitchat.android.ui.LocationChannelsScreen
 import com.bitchat.android.ui.LocationNotesSheetPresenter
+import com.bitchat.android.ui.MeshPeerListSheet
+import com.bitchat.android.ui.PrivateChatSheet
+import com.bitchat.android.ui.SecurityVerificationSheet
 import com.bitchat.android.ui.VerificationScreen
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsScreen
@@ -66,10 +69,14 @@ import com.bitchat.android.navigation.DebugSettingsRoute
 import com.bitchat.android.navigation.EntryProviderInstaller
 import com.bitchat.android.navigation.LocationChannelsRoute
 import com.bitchat.android.navigation.LocationNotesRoute
+import com.bitchat.android.navigation.MeshPeerListRoute
 import com.bitchat.android.navigation.OnboardingRoute
+import com.bitchat.android.navigation.PrivateChatRoute
+import com.bitchat.android.navigation.SecurityVerificationRoute
 import com.bitchat.android.navigation.SheetSceneStrategy
 import com.bitchat.android.navigation.VerificationRoute
 import com.bitchat.android.navigation.rootRouteFor
+import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.VerificationService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -245,15 +252,59 @@ class MainActivity : OrientationAwareActivity() {
                                 onShowChatUser = { nickname, messageId ->
                                     navigator.goTo(ChatUserRoute(nickname, messageId))
                                 },
-                                onShowVerificationFromPeerList = {
+                                onShowLocationChannels = { navigator.goTo(LocationChannelsRoute) },
+                                onShowPeerList = { navigator.goTo(MeshPeerListRoute) },
+                                openPrivateChatID = navigator.backStack
+                                    .lastOrNull { it is PrivateChatRoute }
+                                    ?.let { (it as PrivateChatRoute).conversationID },
+                            )
+                        }
+                        entry<MeshPeerListRoute>(metadata = SheetSceneStrategy.sheet()) {
+                            MeshPeerListSheet(
+                                viewModel = chatViewModel,
+                                onDismiss = { navigator.popTo(MeshPeerListRoute, inclusive = true) },
+                                // Pushed over the list, so Back from verification
+                                // returns to it.
+                                onShowVerification = {
                                     navigator.goTo(
-                                        VerificationRoute(
-                                            peerID = chatViewModel.selectedPrivateChatPeer.value,
-                                            reopenPeerList = true,
-                                        )
+                                        VerificationRoute(chatViewModel.selectedPrivateChatPeer.value)
                                     )
                                 },
-                                onShowLocationChannels = { navigator.goTo(LocationChannelsRoute) },
+                            )
+                        }
+                        entry<PrivateChatRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
+                            val selectedPrivatePeer by chatViewModel.selectedPrivateChatPeer.collectAsState()
+                            // Follows the conversation as it resolves to a contact. The
+                            // resolvers move the selection to the same canonical id, so
+                            // keying on it re-reads the id when that happens.
+                            val conversationID = remember(route, selectedPrivatePeer) {
+                                ContactDirectory.canonicalConversationId(route.conversationID)
+                            }
+                            // Ends the chat once the entry has left the stack, whichever
+                            // way it left: Back, a swipe, the close button, or another
+                            // chat taking its place. Not on recreation, which disposes
+                            // the entry while the stack still holds it.
+                            DisposableEffect(route) {
+                                onDispose {
+                                    if (route !in navigator.backStack) {
+                                        chatViewModel.endPrivateChat(route.conversationID)
+                                    }
+                                }
+                            }
+                            PrivateChatSheet(
+                                peerID = conversationID,
+                                viewModel = chatViewModel,
+                                onShowSecurityVerification = {
+                                    navigator.goTo(SecurityVerificationRoute(conversationID))
+                                },
+                                onDismiss = { navigator.popTo(route, inclusive = true) },
+                            )
+                        }
+                        entry<SecurityVerificationRoute>(metadata = SheetSceneStrategy.sheet()) { route ->
+                            SecurityVerificationSheet(
+                                conversationID = route.conversationID,
+                                onDismiss = { navigator.popTo(route, inclusive = true) },
+                                viewModel = chatViewModel,
                             )
                         }
                         entry<LocationChannelsRoute> {
@@ -268,14 +319,8 @@ class MainActivity : OrientationAwareActivity() {
                         entry<VerificationRoute> { route ->
                             // One close for the header button and Back. Popping by
                             // key makes it idempotent, so a second press during the
-                            // exit animation neither pops twice nor reopens the list
-                            // twice. The list is still a sheet over chat, so it
-                            // reopens once chat is back on top.
-                            val close = {
-                                if (navigator.popTo(route, inclusive = true) && route.reopenPeerList) {
-                                    chatViewModel.showMeshPeerList()
-                                }
-                            }
+                            // exit animation does not pop what lies beneath.
+                            val close = { navigator.popTo(route, inclusive = true); Unit }
                             BackHandler(onBack = close)
                             VerificationScreen(
                                 peerID = route.peerID,
@@ -963,9 +1008,14 @@ class MainActivity : OrientationAwareActivity() {
                 if (peerID != null) {
                     Log.d("MainActivity", "Opening private chat with $senderNickname (peerID: $peerID) from notification")
                     
-                    // Open the private chat sheet with this peer
-                    chatViewModel.showMeshPeerList()
-                    chatViewModel.showPrivateChatSheet(peerID)
+                    // Opens the chat over the peer list, so closing it lands on
+                    // the list of conversations rather than straight back on chat.
+                    if (navigator.popTo(ChatRoute)) {
+                        navigator.goTo(MeshPeerListRoute)
+                        navigator.goTo(
+                            PrivateChatRoute(ContactDirectory.canonicalConversationId(peerID))
+                        )
+                    }
                     
                     // Clear notifications for this sender since user is now viewing the chat
                     chatViewModel.clearNotificationsForSender(peerID)
@@ -1008,12 +1058,7 @@ class MainActivity : OrientationAwareActivity() {
         // Runs after the stack has been seeded: on a cold start from
         // initializeApp, which only runs once onboarding has put chat at the
         // root, and otherwise from onNewIntent once onboarding is complete.
-        navigator.goTo(
-            VerificationRoute(
-                peerID = chatViewModel.selectedPrivateChatPeer.value,
-                reopenPeerList = false,
-            )
-        )
+        navigator.goTo(VerificationRoute(chatViewModel.selectedPrivateChatPeer.value))
         val qr = VerificationService.verifyScannedQR(uri.toString())
         if (qr != null) {
             chatViewModel.beginQRVerification(qr)

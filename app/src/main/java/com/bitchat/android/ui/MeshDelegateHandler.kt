@@ -131,13 +131,6 @@ class MeshDelegateHandler(
             }
         }
 
-        state.getPrivateChatSheetPeerValue()?.let { sheetPeer ->
-            val canonical = ContactDirectory.canonicalConversationId(sheetPeer)
-            if (canonical != sheetPeer) {
-                state.setPrivateChatSheetPeer(canonical)
-            }
-        }
-
         mergedPeers.forEach { pid ->
             try {
                 val canonical = ContactDirectory.canonicalConversationId(pid)

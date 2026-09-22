@@ -51,12 +51,12 @@ data class ChatUserRoute(val nickname: String, val messageId: String?) : NavKey
  * QR verification, a full-screen destination.
  *
  * [peerID] is the private conversation it was opened from, for the unverify
- * action. [reopenPeerList] is set when it was opened from the peer list, which
- * closes to make way for it and reopens on the way back. Both travel in the
- * key, so they survive process death along with the stack.
+ * action. It travels in the key, so it survives process death along with the
+ * stack. Opened from the peer list, it is pushed on top of the list, and Back
+ * returns there.
  */
 @Serializable
-data class VerificationRoute(val peerID: String?, val reopenPeerList: Boolean) : NavKey
+data class VerificationRoute(val peerID: String?) : NavKey
 
 /**
  * Location channels, a full-screen destination: it launches the geohash picker
@@ -71,6 +71,31 @@ data object LocationChannelsRoute : NavKey
  */
 @Serializable
 data object DebugSettingsRoute : NavKey
+
+/**
+ * The network view: conversations, channels and nearby people, shown as a
+ * sheet over chat.
+ */
+@Serializable
+data object MeshPeerListRoute : NavKey
+
+/**
+ * A private conversation, shown as a sheet over chat.
+ *
+ * [conversationID] is the id the conversation was opened with, canonicalized
+ * at the time. It is not rewritten when the conversation later resolves to a
+ * contact: the live id is ChatViewModel's selected private peer, which the
+ * resolvers keep canonical, and the screen prefers it.
+ */
+@Serializable
+data class PrivateChatRoute(val conversationID: String) : NavKey
+
+/**
+ * Session security and fingerprint for a private conversation, a sheet
+ * stacked over it.
+ */
+@Serializable
+data class SecurityVerificationRoute(val conversationID: String) : NavKey
 
 /**
  * The destination that should be at the root for a given onboarding state.

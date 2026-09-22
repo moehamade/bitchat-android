@@ -47,6 +47,8 @@ import kotlin.random.Random
 import com.bitchat.android.services.VerificationService
 import com.bitchat.android.identity.SecureIdentityStateManager
 import com.bitchat.android.noise.NoiseSession
+import com.bitchat.android.navigation.Navigator
+import com.bitchat.android.navigation.openPrivateChat
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.util.hexEncodedString
@@ -82,7 +84,12 @@ class ChatViewModel @Inject constructor(
     // that panic-clear replaced.
     private val messageRouterProvider: Provider<MessageRouter>,
     private val conversationListPreferences: ConversationListPreferences,
-    private val debugSettingsManager: DebugSettingsManager
+    private val debugSettingsManager: DebugSettingsManager,
+    // Several openers of a private chat run in here rather than in a screen: a
+    // geohash DM resolves its conversation first, and the unread shortcut picks
+    // one. The ViewModel shares the Activity's retained scope, as the navigator
+    // does, so it never outlives the stack it drives.
+    private val navigator: Navigator
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Made var to support mesh service replacement after panic clear
@@ -425,9 +432,6 @@ class ChatViewModel @Inject constructor(
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
     val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
-    val showMeshPeerList: StateFlow<Boolean> = state.showMeshPeerList
-    val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
-    val showSecurityVerificationSheet: StateFlow<Boolean> = state.showSecurityVerificationSheet
     val legacyPrivateMediaConsent: StateFlow<LegacyPrivateMediaConsentRequest?> =
         mediaSendingManager.legacyPrivateMediaConsent
     val selectedLocationChannel: StateFlow<com.bitchat.android.geohash.ChannelID?> = state.selectedLocationChannel
@@ -765,8 +769,26 @@ class ChatViewModel @Inject constructor(
         setCurrentPrivateChatPeer(null)
         // Clear mesh mention notifications since user is now back in mesh chat
         clearMeshMentionNotifications()
-        // Ensure sheet is hidden
-        hidePrivateChatSheet()
+    }
+
+    /**
+     * Ends the chat with [conversationID], unless a different one has been
+     * selected since.
+     *
+     * A private chat route calls this as it leaves. Opening one chat from
+     * another can select the new one before the old route is disposed, and
+     * that late call must not end the chat now on screen.
+     */
+    fun endPrivateChat(conversationID: String) {
+        val selected = state.getSelectedPrivateChatPeerValue() ?: return
+        if (
+            ContactDirectory.canonicalConversationId(selected).equals(
+                ContactDirectory.canonicalConversationId(conversationID),
+                ignoreCase = true
+            )
+        ) {
+            endPrivateChat()
+        }
     }
 
     internal suspend fun deletePrivateConversation(
@@ -809,14 +831,6 @@ class ChatViewModel @Inject constructor(
         ) {
             privateChatManager.endPrivateChat()
             setCurrentPrivateChatPeer(null)
-        }
-        val sheetPeer = state.getPrivateChatSheetPeerValue()
-        if (
-            sheetPeer != null &&
-            ContactDirectory.canonicalConversationId(sheetPeer)
-                .equals(canonicalID, ignoreCase = true)
-        ) {
-            hidePrivateChatSheet()
         }
         clearNotificationsForSender(canonicalID)
         notificationManager.removeConversationShortcut(canonicalID)
@@ -941,7 +955,7 @@ class ChatViewModel @Inject constructor(
                 canonical ?: targetKey
             }
 
-            showPrivateChatSheet(openPeer)
+            openPrivateChat(openPeer)
         } catch (e: Exception) {
             Log.w(TAG, "openLatestUnreadPrivateChat failed: ${e.message}")
         }
@@ -1012,10 +1026,6 @@ class ChatViewModel @Inject constructor(
             ).also { canonical ->
                 if (canonical != state.getSelectedPrivateChatPeerValue()) {
                     privateChatManager.startPrivateChat(canonical, mesh)
-                    // If we're in the private chat sheet, update its active peer too
-                    if (state.getPrivateChatSheetPeerValue() != null) {
-                        showPrivateChatSheet(canonical)
-                    }
                 }
             }
             // Send private message
@@ -1320,29 +1330,9 @@ class ChatViewModel @Inject constructor(
         notificationManager.clearMeshMentionNotifications()
     }
 
-    fun showSecurityVerificationSheet() {
-        state.setShowSecurityVerificationSheet(true)
-    }
-
-    fun hideSecurityVerificationSheet() {
-        state.setShowSecurityVerificationSheet(false)
-    }
-
-    fun showMeshPeerList() {
-        state.setShowMeshPeerList(true)
-    }
-
-    fun hideMeshPeerList() {
-        state.setShowMeshPeerList(false)
-    }
-
-    fun showPrivateChatSheet(peerID: String) {
-        val conversationID = ContactDirectory.canonicalConversationId(peerID)
-        state.setPrivateChatSheetPeer(conversationID)
-    }
-
-    fun hidePrivateChatSheet() {
-        state.setPrivateChatSheetPeer(null)
+    /** Shows the private chat with [peerID], in place of whatever opened it. */
+    fun openPrivateChat(peerID: String) {
+        navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
     }
 
     fun getPeerFingerprintForDisplay(peerID: String): String? {
@@ -1644,19 +1634,19 @@ class ChatViewModel @Inject constructor(
      */
     fun startGeohashDM(pubkeyHex: String) {
         geohashViewModel.startGeohashDM(pubkeyHex) { convKey ->
-            showPrivateChatSheet(convKey)
+            openPrivateChat(convKey)
         }
     }
 
     fun startGeohashDMByNickname(nickname: String) {
         geohashViewModel.startGeohashDMByNickname(nickname) { convKey ->
-            showPrivateChatSheet(convKey)
+            openPrivateChat(convKey)
         }
     }
 
     fun startGeohashDMByShortId(shortId: String) {
         geohashViewModel.startGeohashDMByShortId(shortId) { convKey ->
-            showPrivateChatSheet(convKey)
+            openPrivateChat(convKey)
         }
     }
 

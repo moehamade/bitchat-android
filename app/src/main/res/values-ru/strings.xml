@@ -353,7 +353,6 @@
   <string name="fingerprint_their">их отпечаток</string>
   <string name="fingerprint_yours">ваш отпечаток</string>
   <string name="fingerprint_pending">ожидание рукопожатия</string>
-  <string name="fingerprint_no_peer">откройте личный чат</string>
   <string name="fingerprint_status_verified">шифровано и проверено</string>
   <string name="fingerprint_status_encrypted">шифровано</string>
   <string name="fingerprint_status_handshaking">рукопожатие</string>

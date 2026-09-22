@@ -36,7 +36,6 @@
   <string name="fingerprint_their">odcisk drugiej osoby</string>
   <string name="fingerprint_yours">twój odcisk</string>
   <string name="fingerprint_pending">oczekiwanie na uzgadnianie</string>
-  <string name="fingerprint_no_peer">otwórz czat prywatny, aby zobaczyć odciski</string>
   <string name="fingerprint_status_verified">zaszyfrowane i zweryfikowane</string>
   <string name="fingerprint_status_encrypted">zaszyfrowane</string>
   <string name="fingerprint_status_handshaking">uzgadnianie</string>

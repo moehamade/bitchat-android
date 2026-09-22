@@ -21,7 +21,6 @@
   <string name="fingerprint_their">அவர்களின் கைரேகை</string>
   <string name="fingerprint_yours">உங்கள் கைரேகை</string>
   <string name="fingerprint_pending">கைகுலுக்கல் நிலுவையில் உள்ளது</string>
-  <string name="fingerprint_no_peer">கைரேகைகளைப் பார்க்க ஒரு தனிப்பட்ட உரையாடலைத் திறக்கவும்</string>
   <string name="fingerprint_status_verified">குறியாக்கம் செய்யப்பட்டு சரிபார்க்கப்பட்டது</string>
   <string name="fingerprint_status_encrypted">குறியாக்கம் செய்யப்பட்டது</string>
   <string name="fingerprint_status_handshaking">கைகுலுக்கல் நடைபெறுகிறது</string>
