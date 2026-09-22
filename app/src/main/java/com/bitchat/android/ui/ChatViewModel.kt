@@ -55,12 +55,6 @@ import com.bitchat.android.features.voice.LiveVoicePreferences
 import com.bitchat.android.features.voice.LiveVoiceTarget
 import com.bitchat.android.features.voice.VoiceRecorder
 
-private data class ConversationLiveIdentityState(
-    val connectedPeerIDs: List<String>,
-    val peerNicknames: Map<String, String>,
-    val persistedDisplayNames: Map<String, String>
-)
-
 /**
  * Refactored ChatViewModel - Main coordinator for bitchat functionality
  * Delegates specific responsibilities to specialized managers while maintaining 100% iOS compatibility
@@ -107,6 +101,7 @@ class ChatViewModel @Inject constructor(
     private val privateChatSession: PrivateChatSession,
     private val composerMedia: ComposerMedia,
     private val contactFavorites: ContactFavorites,
+    private val conversationDirectory: ConversationDirectory,
 ) : AndroidViewModel(application), BluetoothMeshDelegate {
 
     // Replaced after a panic clear, so read through the session on every use.
@@ -117,7 +112,6 @@ class ChatViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "ChatViewModel"
-        private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
     }
 
 
@@ -167,146 +161,6 @@ class ChatViewModel @Inject constructor(
     val privateChats: StateFlow<Map<String, List<BitchatMessage>>> = state.privateChats
     val selectedPrivateChatPeer: StateFlow<String?> = state.selectedPrivateChatPeer
     val unreadPrivateMessages: StateFlow<Set<String>> = state.unreadPrivateMessages
-    internal val conversationStoreState =
-        com.bitchat.android.services.AppStateStore.conversationStoreState
-    private val conversationPresencePeers = MutableStateFlow<List<String>>(emptyList())
-    private val conversationPresenceRemovalJobs = mutableMapOf<String, Job>()
-    private val conversationDirectoryRevision = MutableStateFlow(0L)
-    private var favoriteRelationshipListenerRegistered = false
-    private val favoriteRelationshipChangeListener = object : FavoritesChangeListener {
-        override fun onFavoriteChanged(noiseKeyHex: String) {
-            refreshConversationDirectoryState()
-        }
-
-        override fun onAllCleared() {
-            refreshConversationDirectoryState()
-        }
-    }
-
-    private fun refreshConversationDirectoryState() {
-        viewModelScope.launch {
-            refreshPeerFavoritedUs()
-            conversationListPreferences.canonicalizeAliases()
-            conversationDirectoryRevision.update { it + 1L }
-        }
-    }
-
-    private val conversationLiveIdentityState = combine(
-        conversationPresencePeers,
-        state.peerNicknames,
-        state.peerFingerprints,
-        conversationDirectoryRevision,
-        com.bitchat.android.services.AppStateStore.privateConversationDisplayNames
-    ) { connectedPeerIDs, peerNicknames, _, _, persistedDisplayNames ->
-        ConversationLiveIdentityState(
-            connectedPeerIDs = connectedPeerIDs,
-            peerNicknames = peerNicknames,
-            persistedDisplayNames = persistedDisplayNames
-                .mapKeys { (conversationID, _) -> conversationID.lowercase() }
-        )
-    }
-    private val baseConversations = combine(
-        state.unreadPrivateMessages,
-        state.privateChats,
-        state.nickname,
-        conversationLiveIdentityState,
-        com.bitchat.android.services.AppStateStore.unreadPrivateMessageCounts
-    ) { unreadConversationIDs, chats, currentNickname, liveIdentity, unreadCounts ->
-        val seenStore = seenMessageStore
-        val connectedPeerByIdentity = buildMap {
-            liveIdentity.connectedPeerIDs.forEach { peerID ->
-                val identities = runCatching {
-                    ContactDirectory.aliasesForConversation(peerID) +
-                        ContactDirectory.canonicalConversationId(peerID)
-                }.getOrDefault(setOf(peerID))
-                identities.forEach { identity ->
-                    putIfAbsent(identity.lowercase(), peerID)
-                }
-            }
-        }
-        buildConversationSummaries(
-            unreadConversationIDs = unreadConversationIDs,
-            privateChats = chats,
-            currentUserIdentifiers = setOf(currentNickname, mesh.myPeerID),
-            canonicalize = ContactDirectory::canonicalConversationId,
-            isMessageRead = { message ->
-                com.bitchat.android.services.AppStateStore.isPrivateMessageRead(message.id) ||
-                    seenStore.hasBeenReadLocally(message.id)
-            },
-            persistedUnreadCounts = unreadCounts
-        ).map { summary ->
-            val resolution = ContactDirectory.resolve(summary.conversationID)
-            val resolvedNostrPubkey = summary.nostrPubkey
-                ?: resolution.nostrPubkey?.let(ContactIdentityResolver::nostrPubkeyHex)
-            val aliases = buildSet {
-                addAll(summary.identityAliases)
-                add(summary.conversationID)
-                add(resolution.conversationID)
-                resolution.meshPeerID?.let(::add)
-                resolution.noiseKeyHex?.let(::add)
-                resolvedNostrPubkey
-                    ?.let(ContactIdentityResolver::nostrAliasForPubkey)
-                    ?.let(::add)
-            }.mapTo(mutableSetOf()) { it.lowercase() }
-            val connectedPeerID = aliases
-                .asSequence()
-                .mapNotNull(connectedPeerByIdentity::get)
-                .firstOrNull()
-            val persistedDisplayName = liveIdentity.persistedDisplayNames[
-                summary.conversationID.lowercase()
-            ] ?: aliases
-                .asSequence()
-                .mapNotNull(liveIdentity.persistedDisplayNames::get)
-                .firstOrNull()
-
-            summary.copy(
-                displayName = resolveConversationDisplayName(
-                    fallbackName = summary.displayName,
-                    connectedPeerID = connectedPeerID,
-                    peerNicknames = liveIdentity.peerNicknames,
-                    resolvedContactName = resolution.displayName,
-                    persistedDisplayName = persistedDisplayName
-                ),
-                nostrPubkey = resolvedNostrPubkey,
-                transport = if (resolvedNostrPubkey != null) {
-                    DirectMessageTransport.NOSTR
-                } else {
-                    summary.transport
-                },
-                identityAliases = aliases,
-                isConnected = connectedPeerID != null,
-                connectedPeerID = connectedPeerID,
-                sourceGeohash = aliases
-                    .asSequence()
-                    .mapNotNull(GeohashConversationRegistry::get)
-                    .firstOrNull()
-            )
-        }
-    }
-
-    internal val conversations: StateFlow<List<ConversationSummary>> = combine(
-        baseConversations,
-        conversationListPreferences.pinned,
-        conversationListPreferences.muted,
-        conversationListPreferences.drafts
-    ) { summaries, pinned, muted, drafts ->
-        sortConversationSummaries(
-            summaries.map { summary ->
-                val key = summary.conversationID.lowercase()
-                summary.copy(
-                    isPinned = key in pinned,
-                    isMuted = key in muted,
-                    draft = drafts[key]
-                )
-            }
-        )
-    }
-        .flowOn(Dispatchers.IO)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
     val joinedChannels: StateFlow<Set<String>> = state.joinedChannels
     val currentChannel: StateFlow<String?> = state.currentChannel
     val channelMessages: StateFlow<Map<String, List<BitchatMessage>>> = state.channelMessages
@@ -341,12 +195,12 @@ class ChatViewModel @Inject constructor(
     fun getMeshPeerInfo(peerID: String): com.bitchat.android.mesh.PeerInfo? = mesh.getPeerInfo(peerID)
 
     init {
-        observeConversationPresenceWithDisconnectGrace()
+        conversationDirectory.observePresenceWithDisconnectGrace()
         // Note: Mesh service delegate is now set by MainActivity
         loadAndInitialize()
         ContactDirectory.initialize(getApplication()) { mesh }
         com.bitchat.android.services.AppStateStore.canonicalizePrivateChats()
-        observeConversationDisplayNames()
+        conversationDirectory.observeDisplayNames()
         // Application startup performs the initial restore. Repeat it for every new UI owner
         // because a quick reopen can reuse a process whose in-memory state was cleared during
         // controlled shutdown.
@@ -425,59 +279,7 @@ class ChatViewModel @Inject constructor(
         // Removed background location notes subscription. Notes now load only when sheet opens.
     }
 
-    /**
-     * Mesh discovery can briefly drop a peer while transports hand over. Preserve its online
-     * treatment for a short grace window to keep conversation rows from jumping between sections.
-     * New connections still appear immediately.
-     */
-    private fun observeConversationPresenceWithDisconnectGrace() {
-        viewModelScope.launch {
-            state.connectedPeers.collect { connected ->
-                val current = connected.toSet()
-                current.forEach { peerID ->
-                    conversationPresenceRemovalJobs.remove(peerID)?.cancel()
-                }
 
-                val displayed = conversationPresencePeers.value.toMutableList()
-                connected.forEach { peerID ->
-                    if (peerID !in displayed) displayed.add(peerID)
-                }
-                if (displayed != conversationPresencePeers.value) {
-                    conversationPresencePeers.value = displayed
-                }
-
-                (displayed.toSet() - current).forEach { peerID ->
-                    if (peerID in conversationPresenceRemovalJobs) return@forEach
-                    conversationPresenceRemovalJobs[peerID] = launch {
-                        delay(CONVERSATION_DISCONNECT_GRACE_MS)
-                        if (peerID !in state.connectedPeers.value) {
-                            conversationPresencePeers.value =
-                                conversationPresencePeers.value - peerID
-                        }
-                        conversationPresenceRemovalJobs.remove(peerID)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun observeConversationDisplayNames() {
-        viewModelScope.launch {
-            combine(
-                state.peerNicknames,
-                state.connectedPeers,
-                state.peerFingerprints
-            ) { peerNicknames, connectedPeers, _ ->
-                connectedPeers.mapNotNull { peerID ->
-                    peerNicknames[peerID]?.let { peerID to it }
-                }.toMap()
-            }.collect { connectedNames ->
-                conversationListPreferences.canonicalizeAliases()
-                com.bitchat.android.services.AppStateStore
-                    .updatePrivateConversationDisplayNames(connectedNames)
-            }
-        }
-    }
 
     
     private fun loadAndInitialize() {
@@ -535,13 +337,7 @@ class ChatViewModel @Inject constructor(
         com.bitchat.android.favorites.FavoritesPersistenceService.initialize(getApplication())
 
         // Reflect "they favorited us" changes into reactive UI state (drives star celebrations)
-        refreshPeerFavoritedUs()
-        try {
-            com.bitchat.android.favorites.FavoritesPersistenceService.shared.addListener(
-                favoriteRelationshipChangeListener
-            )
-            favoriteRelationshipListenerRegistered = true
-        } catch (_: Exception) { }
+        conversationDirectory.startFavoriteTracking()
 
         // Load verified fingerprints from secure storage
         verificationHandler.loadVerifiedFingerprints()
@@ -558,14 +354,7 @@ class ChatViewModel @Inject constructor(
     }
     
     override fun onCleared() {
-        if (favoriteRelationshipListenerRegistered) {
-            runCatching {
-                FavoritesPersistenceService.shared.removeListener(
-                    favoriteRelationshipChangeListener
-                )
-            }
-            favoriteRelationshipListenerRegistered = false
-        }
+        conversationDirectory.stopFavoriteTracking()
         geohashSession.shutdownUiSubscriptions()
         com.bitchat.android.services.AppStateStore.setSelectedPrivateChatPeer(null)
         // Note: Mesh service lifecycle is now managed by MainActivity
@@ -611,112 +400,30 @@ class ChatViewModel @Inject constructor(
     /** Ends [conversationID]'s chat, unless another has been selected since. */
     fun endPrivateChat(conversationID: String) = privateChatSession.end(conversationID)
 
-    internal suspend fun deletePrivateConversation(
-        peerOrConversationID: String
-    ): com.bitchat.android.services.DeletedPrivateConversation? {
-        val canonicalID = ContactDirectory.canonicalConversationId(peerOrConversationID)
-        val wasPinned = conversationListPreferences.isPinned(canonicalID)
-        val wasMuted = conversationListPreferences.isMuted(canonicalID)
-        val draft = conversationListPreferences.draftFor(canonicalID)
-        val unreadAliases = matchingUnreadAliases(
-            unreadConversationIDs = state.getUnreadPrivateMessagesValue(),
-            canonicalConversationID = canonicalID,
-            canonicalize = ContactDirectory::canonicalConversationId
-        )
-        val deletion = withContext(Dispatchers.IO) {
-            com.bitchat.android.services.AppStateStore
-                .deletePrivateConversationAndWait(canonicalID)
-        }?.copy(
-            wasPinned = wasPinned,
-            wasMuted = wasMuted,
-            draft = draft
-        ) ?: return null
-        conversationListPreferences.removeConversation(canonicalID)
 
-        state.setPrivateChats(
-            ContactDirectory.canonicalizePrivateChats(
-                com.bitchat.android.services.AppStateStore.privateMessages.value
-            )
-        )
-        state.setUnreadPrivateMessages(
-            state.getUnreadPrivateMessagesValue() - unreadAliases
-        )
-        seenMessageStore.remove(deletion.messageIDs)
 
-        val selected = state.getSelectedPrivateChatPeerValue()
-        if (
-            selected != null &&
-            ContactDirectory.canonicalConversationId(selected)
-                .equals(canonicalID, ignoreCase = true)
-        ) {
-            privateChatManager.endPrivateChat()
-            setCurrentPrivateChatPeer(null)
-        }
-        clearNotificationsForSender(canonicalID)
-        notificationManager.removeConversationShortcut(canonicalID)
-        return deletion
-    }
+
+
+
+    internal val conversations: StateFlow<List<ConversationSummary>> =
+        conversationDirectory.conversations
+    internal val conversationStoreState = conversationDirectory.conversationStoreState
+
+    internal suspend fun deletePrivateConversation(peerOrConversationID: String) =
+        conversationDirectory.delete(peerOrConversationID)
 
     internal suspend fun restoreDeletedConversation(
         deletion: com.bitchat.android.services.DeletedPrivateConversation
-    ): Boolean {
-        val restored = withContext(Dispatchers.IO) {
-            com.bitchat.android.services.AppStateStore
-                .restoreDeletedConversation(deletion)
-        }
-        if (!restored) return false
-        if (deletion.wasPinned != conversationListPreferences.isPinned(deletion.conversationID)) {
-            conversationListPreferences.togglePinned(deletion.conversationID)
-        }
-        if (deletion.wasMuted != conversationListPreferences.isMuted(deletion.conversationID)) {
-            conversationListPreferences.toggleMuted(deletion.conversationID)
-        }
-        deletion.draft?.let {
-            conversationListPreferences.setDraft(deletion.conversationID, it)
-        }
-        state.setPrivateChats(
-            ContactDirectory.canonicalizePrivateChats(
-                com.bitchat.android.services.AppStateStore.privateMessages.value
-            )
-        )
-        if (deletion.unreadMessageCount > 0) {
-            state.setUnreadPrivateMessages(
-                state.getUnreadPrivateMessagesValue() + deletion.conversationID
-            )
-        }
-        return true
-    }
+    ): Boolean = conversationDirectory.restore(deletion)
 
-    internal suspend fun setConversationRead(
-        conversationID: String,
-        isRead: Boolean
-    ): Boolean {
-        val canonicalID = ContactDirectory.canonicalConversationId(conversationID)
-        val updated = withContext(Dispatchers.IO) {
-            com.bitchat.android.services.AppStateStore
-                .setPrivateConversationRead(canonicalID, isRead)
-        }
-        if (!updated) return false
-        state.setUnreadPrivateMessages(
-            if (isRead) {
-                state.getUnreadPrivateMessagesValue().filterNotTo(mutableSetOf()) {
-                    ContactDirectory.canonicalConversationId(it)
-                        .equals(canonicalID, ignoreCase = true)
-                }
-            } else {
-                state.getUnreadPrivateMessagesValue() + canonicalID
-            }
-        )
-        return true
-    }
+    internal suspend fun setConversationRead(conversationID: String, isRead: Boolean): Boolean =
+        conversationDirectory.setRead(conversationID, isRead)
 
-    internal fun toggleConversationPinned(conversationID: String) {
-        conversationListPreferences.togglePinned(conversationID)
-    }
+    internal fun toggleConversationPinned(conversationID: String) =
+        conversationDirectory.togglePinned(conversationID)
 
-    internal fun toggleConversationMuted(conversationID: String) {
-        conversationListPreferences.toggleMuted(conversationID)
-    }
+    internal fun toggleConversationMuted(conversationID: String) =
+        conversationDirectory.toggleMuted(conversationID)
 
     internal fun conversationDraft(conversationID: String?): String =
         conversationListPreferences.composerDraft(conversationID)
@@ -792,20 +499,6 @@ class ChatViewModel @Inject constructor(
     }
     
     
-    private fun refreshPeerFavoritedUs() {
-        try {
-            val fingerprints = com.bitchat.android.favorites.FavoritesPersistenceService.shared
-                .getAllRelationships()
-                .filter { it.theyFavoritedUs }
-                .mapNotNull { relationship ->
-                    runCatching {
-                        ContactIdentityResolver.fingerprintHex(relationship.peerNoisePublicKey)
-                    }.getOrNull()
-                }
-                .toSet()
-            state.setPeerFavoritedUs(fingerprints)
-        } catch (_: Exception) { }
-    }
 
 
     private fun isConnectedOnMesh(peerID: String): Boolean {
