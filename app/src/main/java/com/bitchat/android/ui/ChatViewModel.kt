@@ -298,18 +298,6 @@ class ChatViewModel @Inject constructor(
 
     // MARK: - Debug and Troubleshooting
     
-    fun setCurrentGeohash(geohash: String?) {
-        notificationManager.setCurrentGeohash(geohash)
-    }
-
-    fun clearNotificationsForSender(peerID: String) {
-        notificationManager.clearNotificationsForSender(peerID)
-    }
-    
-    fun clearNotificationsForGeohash(geohash: String) {
-        notificationManager.clearNotificationsForGeohash(geohash)
-    }
-
     /** Shows the private chat with [peerID], in place of whatever opened it. */
     fun openPrivateChat(peerID: String) {
         navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
@@ -341,10 +329,6 @@ class ChatViewModel @Inject constructor(
     
     fun panicClearAllData() = panicClear.run()
 
-    fun selectLocationChannel(channel: com.bitchat.android.geohash.ChannelID) {
-        geohashSession.selectLocationChannel(channel)
-    }
-
     // MARK: - Navigation Management
     
 
@@ -357,31 +341,6 @@ class ChatViewModel @Inject constructor(
      */
     fun dismissPasswordPrompt() {
         state.clearPasswordPrompt()
-    }
-
-    /** What Back would unwind next; drives the chat screen's back handler. */
-    val pendingBackAction = state.pendingBackAction
-
-    /**
-     * Handle Android back navigation
-     * Returns true if the back press was handled, false if it should be passed to the system
-     */
-    fun handleBackPressed(): Boolean {
-        return when (state.pendingBackAction()) {
-            BackAction.DismissPasswordPrompt -> {
-                dismissPasswordPrompt()
-                true
-            }
-            BackAction.ExitPrivateChat -> {
-                endPrivateChat()
-                true
-            }
-            BackAction.ExitChannel -> {
-                switchToChannel(null)
-                true
-            }
-            BackAction.None -> false
-        }
     }
 
     // MARK: - Canonical peer identities

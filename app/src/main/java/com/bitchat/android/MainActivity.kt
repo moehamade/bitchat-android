@@ -42,7 +42,11 @@ import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.BackAction
 import com.bitchat.android.ui.AboutScreen
 import com.bitchat.android.ui.AppForegroundEffect
+import com.bitchat.android.ui.ChatBackUnwinder
 import com.bitchat.android.ui.ChatMeshDelegate
+import com.bitchat.android.ui.ChatSessionStartup
+import com.bitchat.android.ui.ChatState
+import com.bitchat.android.ui.GeohashSession
 import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatUserSheet
 import com.bitchat.android.ui.LocationChannelsScreen
@@ -123,6 +127,24 @@ class MainActivity : OrientationAwareActivity() {
     // What the mesh reports to while the UI is attached; the chat session's.
     @Inject
     lateinit var chatMeshDelegate: ChatMeshDelegate
+
+    // The chat session's. The Activity starts the session, unwinds the chat
+    // screen's overlays on Back, and routes notification taps into it, so none
+    // of that waits for the chat screen's ViewModel to exist.
+    @Inject
+    lateinit var chatSessionStartup: ChatSessionStartup
+
+    @Inject
+    lateinit var chatBackUnwinder: ChatBackUnwinder
+
+    @Inject
+    lateinit var chatState: ChatState
+
+    @Inject
+    lateinit var chatNotifications: com.bitchat.android.ui.NotificationManager
+
+    @Inject
+    lateinit var geohashSession: GeohashSession
 
     private val forceFinishReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
@@ -277,7 +299,7 @@ class MainActivity : OrientationAwareActivity() {
                                 // returns to it.
                                 onShowVerification = {
                                     navigator.goTo(
-                                        VerificationRoute(chatViewModel.selectedPrivateChatPeer.value)
+                                        VerificationRoute(chatState.selectedPrivateChatPeer.value)
                                     )
                                 },
                             )
@@ -363,7 +385,11 @@ class MainActivity : OrientationAwareActivity() {
                     // handler wins, so overlays unwind before routes pop; called
                     // unconditionally and gated by `enabled`, because a conditional
                     // call would reorder composition.
-                    val pendingBackAction by chatViewModel.pendingBackAction.collectAsState()
+                    // Started on the first composition, where the Activity first
+                    // reached the chat ViewModel before, and ahead of any
+                    // notification intent that selects a channel. Idempotent.
+                    chatSessionStartup.start()
+                    val pendingBackAction by chatBackUnwinder.pendingBackAction.collectAsState()
                     BackHandler(
                         enabled = navigator.backStack.lastOrNull() == ChatRoute &&
                             pendingBackAction != BackAction.None
@@ -372,7 +398,7 @@ class MainActivity : OrientationAwareActivity() {
                         // second quick press can arrive with nothing left to unwind. Forward
                         // it rather than swallowing it: pop a route if there is one, and
                         // otherwise leave, which is what the press would have done anyway.
-                        if (!chatViewModel.handleBackPressed() && !navigator.goBack()) finish()
+                        if (!chatBackUnwinder.handle() && !navigator.goBack()) finish()
                     }
                 }
             }
@@ -1005,7 +1031,7 @@ class MainActivity : OrientationAwareActivity() {
                     }
                     
                     // Clear notifications for this sender since user is now viewing the chat
-                    chatViewModel.clearNotificationsForSender(peerID)
+                    chatNotifications.clearNotificationsForSender(peerID)
                 }
             }
             
@@ -1026,13 +1052,13 @@ class MainActivity : OrientationAwareActivity() {
                     }
                     val geohashChannel = com.bitchat.android.geohash.GeohashChannel(level, geohash)
                     val channelId = com.bitchat.android.geohash.ChannelID.Location(geohashChannel)
-                    chatViewModel.selectLocationChannel(channelId)
+                    geohashSession.selectLocationChannel(channelId)
                     
                     // Update current geohash state for notifications
-                    chatViewModel.setCurrentGeohash(geohash)
+                    chatNotifications.setCurrentGeohash(geohash)
                     
                     // Clear notifications for this geohash since user is now viewing it
-                    chatViewModel.clearNotificationsForGeohash(geohash)
+                    chatNotifications.clearNotificationsForGeohash(geohash)
                 }
             }
         }
@@ -1045,7 +1071,7 @@ class MainActivity : OrientationAwareActivity() {
         // Runs after the stack has been seeded: on a cold start from
         // initializeApp, which only runs once onboarding has put chat at the
         // root, and otherwise from onNewIntent once onboarding is complete.
-        navigator.goTo(VerificationRoute(chatViewModel.selectedPrivateChatPeer.value))
+        navigator.goTo(VerificationRoute(chatState.selectedPrivateChatPeer.value))
         val qr = VerificationService.verifyScannedQR(uri.toString())
         if (qr != null) {
             verificationHandler.beginQRVerification(qr)
