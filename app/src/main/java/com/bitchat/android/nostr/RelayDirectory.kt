@@ -35,7 +35,7 @@ object RelayDirectory {
 
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient: OkHttpClient
-        get() = com.bitchat.android.net.OkHttpProvider.httpClient()
+        get() = NostrNetwork.clients().httpClient()
 
     data class RelayInfo(
         val url: String,

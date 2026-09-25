@@ -2,7 +2,7 @@ package com.bitchat.android.geohash
 
 import android.location.Address
 import android.util.Log
-import com.bitchat.android.net.OkHttpProvider
+import com.bitchat.android.nostr.NostrNetwork
 import com.google.gson.Gson
 import java.io.IOException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -31,7 +31,7 @@ class OpenStreetMapGeocoderProvider : GeocoderProvider {
                 .url(url)
                 .header("User-Agent", userAgent)
                 .build()
-            val call = OkHttpProvider.httpClient().newCall(request)
+            val call = NostrNetwork.clients().httpClient().newCall(request)
 
             continuation.invokeOnCancellation { call.cancel() }
             val enqueueRequest = {

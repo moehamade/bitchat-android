@@ -122,7 +122,7 @@ class NostrRelayManager private constructor() {
     
     // OkHttp client for WebSocket connections (via provider to honor Tor)
     private val httpClient: OkHttpClient
-        get() = com.bitchat.android.net.OkHttpProvider.webSocketClient()
+        get() = NostrNetwork.clients().webSocketClient()
     
     private val gson by lazy { NostrRequest.createGson() }
     

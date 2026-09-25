@@ -24,6 +24,13 @@ class BitchatApplication : Application() {
             torProvider.init(this)
         } catch (_: Exception){}
 
+        // Nostr and the geocoder take their clients from here, and refuse to run
+        // without them, so nothing of theirs can connect outside this policy.
+        com.bitchat.android.nostr.NostrNetwork.install(object : com.bitchat.android.nostr.NostrHttpClients {
+            override fun httpClient() = com.bitchat.android.net.OkHttpProvider.httpClient()
+            override fun webSocketClient() = com.bitchat.android.net.OkHttpProvider.webSocketClient()
+        })
+
         // Initialize relay directory (loads assets/nostr_relays.csv)
         RelayDirectory.initialize(this)
 
