@@ -134,6 +134,7 @@ dependencies {
     implementation(project(":core:navigation"))
     implementation(project(":core:mesh"))
     implementation(project(":core:nostr"))
+    implementation(project(":core:chat"))
 
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)

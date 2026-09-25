@@ -65,5 +65,6 @@ tasks.register("clientRewriteContractTest") {
         ":app:testDebugUnitTest",
         ":core:mesh:testDebugUnitTest",
         ":core:nostr:testDebugUnitTest",
+        ":core:chat:testDebugUnitTest",
     )
 }

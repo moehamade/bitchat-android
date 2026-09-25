@@ -1122,10 +1122,12 @@ private fun ConversationRow(
         isWifiAware = isWifiAware,
         isDirect = isDirect
     )
+    // A local, because a property from another module cannot be smart-cast.
+    val draft = conversation.draft
     val basePreview = when {
-        !conversation.draft.isNullOrBlank() -> stringResource(
+        !draft.isNullOrBlank() -> stringResource(
             R.string.conversation_draft_preview,
-            conversation.draft
+            draft
         )
         conversation.latestMessageType == BitchatMessageType.Image ->
             stringResource(R.string.notification_sent_image)
