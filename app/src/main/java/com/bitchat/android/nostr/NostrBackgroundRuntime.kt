@@ -40,14 +40,21 @@ object NostrBackgroundRuntime {
     private lateinit var application: Application
     private lateinit var subscriptions: NostrSubscriptionManager
     private lateinit var locationChannels: LocationChannelManager
-    private lateinit var eventProcessor: NostrBackgroundEventProcessor
+    private lateinit var eventProcessor: NostrBackgroundEvents
 
-    fun initialize(app: Application) {
+    /**
+     * Starts the process-owned subscriptions. [events] builds what their
+     * events are handed to, on the runtime's scope.
+     */
+    fun initialize(
+        app: Application,
+        events: (Application, CoroutineScope) -> NostrBackgroundEvents,
+    ) {
         synchronized(lock) {
             if (initialized) return
             application = app
             locationChannels = LocationChannelManager.getInstance(app)
-            eventProcessor = NostrBackgroundEventProcessor(app, scope)
+            eventProcessor = events(app, scope)
             subscriptions = NostrSubscriptionManager(
                 app,
                 owner = NostrRelayManager.OWNER_BACKGROUND

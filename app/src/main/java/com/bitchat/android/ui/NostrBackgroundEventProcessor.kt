@@ -1,13 +1,15 @@
-package com.bitchat.android.nostr
+package com.bitchat.android.ui
 
 import android.app.Application
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.nostr.GeohashConversationRegistry
+import com.bitchat.android.nostr.GeohashMessageHandler
+import com.bitchat.android.nostr.GeohashRepository
+import com.bitchat.android.nostr.NostrBackgroundEvents
+import com.bitchat.android.nostr.NostrDirectMessageHandler
+import com.bitchat.android.nostr.NostrEvent
+import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.services.AppStateStore
-import com.bitchat.android.ui.ChatState
-import com.bitchat.android.ui.DataManager
-import com.bitchat.android.ui.MessageManager
-import com.bitchat.android.ui.NoiseSessionDelegate
-import com.bitchat.android.ui.PrivateChatManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,10 +21,10 @@ import kotlinx.coroutines.launch
  * borrowed from a ViewModel. This processor owns only application-scoped collaborators and writes
  * messages to [AppStateStore], which the next UI instance hydrates from.
  */
-internal class NostrBackgroundEventProcessor(
+class NostrBackgroundEventProcessor(
     application: Application,
     parentScope: CoroutineScope
-) {
+) : NostrBackgroundEvents {
     private val scope = CoroutineScope(
         parentScope.coroutineContext + Dispatchers.IO.limitedParallelism(1)
     )
@@ -54,7 +56,7 @@ internal class NostrBackgroundEventProcessor(
     )
     private val directMessageHandler = NostrDirectMessageHandler(
         application = application,
-        inbox = com.bitchat.android.ui.ChatPrivateMessageInbox(state, privateChatManager),
+        inbox = ChatPrivateMessageInbox(state, privateChatManager),
         updateDeliveryStatus = ::updateDeliveryStatus,
         scope = scope,
         repo = geohashRepository,
@@ -75,29 +77,29 @@ internal class NostrBackgroundEventProcessor(
         }
     }
 
-    fun onAccountDm(event: NostrEvent, identity: NostrIdentity) {
+    override fun onAccountDm(event: NostrEvent, identity: NostrIdentity) {
         refreshBlockLists()
         directMessageHandler.onGiftWrap(event, "", identity)
     }
 
-    fun onGeohashMessage(event: NostrEvent, geohash: String) {
+    override fun onGeohashMessage(event: NostrEvent, geohash: String) {
         refreshBlockLists()
         geohashMessageHandler.onEvent(event, geohash)
     }
 
-    fun onGeohashDm(event: NostrEvent, geohash: String, identity: NostrIdentity) {
+    override fun onGeohashDm(event: NostrEvent, geohash: String, identity: NostrIdentity) {
         refreshBlockLists()
         directMessageHandler.onGiftWrap(event, geohash, identity)
     }
 
-    fun conversationGeohash(conversationKey: String): String? =
+    override fun conversationGeohash(conversationKey: String): String? =
         geohashRepository.getConversationGeohash(conversationKey)
             ?: GeohashConversationRegistry.get(conversationKey)
 
-    fun displayNameForNostrPubkey(pubkeyHex: String): String =
+    override fun displayNameForNostrPubkey(pubkeyHex: String): String =
         geohashRepository.displayNameForNostrPubkeyUI(pubkeyHex)
 
-    fun displayNameForGeohashConversation(pubkeyHex: String, sourceGeohash: String): String =
+    override fun displayNameForGeohashConversation(pubkeyHex: String, sourceGeohash: String): String =
         geohashRepository.displayNameForGeohashConversation(pubkeyHex, sourceGeohash)
 
     private fun updateDeliveryStatus(messageId: String, status: DeliveryStatus) {

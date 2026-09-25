@@ -2,6 +2,7 @@ package com.bitchat.android
 
 import android.app.Application
 import com.bitchat.android.nostr.RelayDirectory
+import com.bitchat.android.ui.NostrBackgroundEventProcessor
 import com.bitchat.android.ui.theme.ThemePreferenceManager
 import com.bitchat.android.net.ArtiTorManager
 import dagger.hilt.android.HiltAndroidApp
@@ -81,7 +82,12 @@ class BitchatApplication : Application() {
 
         // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
         // process level so closing the Activity does not disconnect Nostr.
-        try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
+        try {
+            com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(
+                this,
+                ::NostrBackgroundEventProcessor
+            )
+        } catch (_: Exception) { }
 
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }

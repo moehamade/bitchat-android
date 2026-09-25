@@ -1,7 +1,10 @@
-package com.bitchat.android.nostr
+package com.bitchat.android.ui
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.bitchat.android.nostr.NostrEvent
+import com.bitchat.android.nostr.NostrIdentity
+import com.bitchat.android.nostr.NostrKind
 import com.bitchat.android.services.AppStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
