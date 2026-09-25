@@ -18,9 +18,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.content.LocusIdCompat
 import androidx.core.graphics.drawable.IconCompat
-import com.bitchat.android.MainActivity
 import com.bitchat.android.R
-import com.bitchat.android.service.ConversationNotificationReceiver
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ConversationListPreferences
 import java.util.Collections
@@ -38,7 +36,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class NotificationManager(
   private val context: Context,
-  private val notificationManager: NotificationManagerCompat
+  private val notificationManager: NotificationManagerCompat,
+  private val targets: NotificationTargets,
 ) {
 
     companion object {
@@ -223,7 +222,7 @@ class NotificationManager(
         val messageCount = notifications.size
 
         // Create intent to open the specific private chat
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_OPEN_PRIVATE_CHAT, true)
             putExtra(EXTRA_PEER_ID, senderPeerID)
@@ -277,7 +276,7 @@ class NotificationManager(
             .setShowWhen(true)
             .setWhen(latestNotification.timestamp)
 
-        val markReadIntent = Intent(context, ConversationNotificationReceiver::class.java).apply {
+        val markReadIntent = Intent(context, targets.actionReceiver).apply {
             action = ACTION_MARK_CONVERSATION_READ
             putExtra(EXTRA_PEER_ID, senderPeerID)
         }
@@ -287,7 +286,7 @@ class NotificationManager(
             markReadIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val replyIntent = Intent(context, ConversationNotificationReceiver::class.java).apply {
+        val replyIntent = Intent(context, targets.actionReceiver).apply {
             action = ACTION_REPLY_TO_CONVERSATION
             putExtra(EXTRA_PEER_ID, senderPeerID)
             putExtra(EXTRA_SENDER_NICKNAME, latestNotification.senderNickname)
@@ -376,7 +375,7 @@ class NotificationManager(
     }
 
     fun showVerificationNotification(title: String, body: String, peerID: String? = null) {
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             if (peerID != null) {
                 putExtra(EXTRA_OPEN_PRIVATE_CHAT, true)
@@ -415,7 +414,7 @@ class NotificationManager(
         val totalMessages = pendingNotifications.values.sumOf { it.size }
         val senderCount = pendingNotifications.size
 
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
@@ -553,7 +552,7 @@ class NotificationManager(
         val firstMessageCount = notifications.count { it.isFirstMessage }
 
         // Create intent to open the specific geohash chat
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_OPEN_GEOHASH_CHAT, true)
             putExtra(EXTRA_GEOHASH, geohash)
@@ -642,7 +641,7 @@ class NotificationManager(
             notifications.count { it.isMention }
         }
 
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
@@ -773,7 +772,7 @@ class NotificationManager(
         val messageCount = notifications.size
 
         // Create intent to open the mesh chat (no specific peer, just main chat)
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, targets.activity).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             // No specific chat to open, just bring the app to foreground
         }

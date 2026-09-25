@@ -19,6 +19,7 @@ import com.bitchat.android.ui.MediaSendingManager
 import com.bitchat.android.ui.MeshDelegateHandler
 import com.bitchat.android.ui.MessageManager
 import com.bitchat.android.ui.NotificationManager
+import com.bitchat.android.ui.NotificationTargets
 import com.bitchat.android.ui.PrivateChatManager
 import com.bitchat.android.ui.VerificationHandler
 import dagger.Lazy
@@ -84,8 +85,11 @@ object ChatSessionModule {
 
     @Provides
     @ActivityRetainedScoped
-    fun provideNotificationManager(@ApplicationContext context: Context): NotificationManager =
-        NotificationManager(context, NotificationManagerCompat.from(context))
+    fun provideNotificationManager(
+        @ApplicationContext context: Context,
+        targets: NotificationTargets,
+    ): NotificationManager =
+        NotificationManager(context, NotificationManagerCompat.from(context), targets)
 
     @Provides
     @ActivityRetainedScoped
