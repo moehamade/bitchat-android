@@ -160,11 +160,11 @@ class PanicClear @Inject constructor(
         MeshServiceHolder.clear()
 
         // Create fresh mesh service with new identity (keys were regenerated in clearAllCryptographicData)
-        val freshMeshService = MeshServiceHolder.getOrCreate(context)
+        MeshServiceHolder.getOrCreate(context)
         val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(context)
 
         // Replace the session's reference and set up the new service
-        sessionMesh.replace(freshMeshService, freshUnifiedMeshService)
+        sessionMesh.replace(freshUnifiedMeshService)
         mesh.delegate = meshDelegate
 
         // Restart mesh operations with new identity

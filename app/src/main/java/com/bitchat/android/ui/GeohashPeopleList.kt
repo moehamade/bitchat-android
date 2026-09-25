@@ -27,12 +27,6 @@ import java.util.*
  * Geohash people list — card groups matching location / settings sheet rows.
  */
 
-data class GeoPerson(
-    val id: String,           // pubkey hex (lowercased) - matches iOS
-    val displayName: String,  // nickname with #suffix - matches iOS
-    val lastSeen: Date        // activity timestamp - matches iOS
-)
-
 @Composable
 fun GeohashPeopleList(
     viewModel: MeshPeerListViewModel,

@@ -1,6 +1,5 @@
 package com.bitchat.android.ui
 
-import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.MeshService
 import dagger.hilt.android.scopes.ActivityRetainedScoped
 import javax.inject.Inject
@@ -17,19 +16,14 @@ import javax.inject.Inject
  */
 @ActivityRetainedScoped
 class ChatSessionMesh @Inject constructor(
-    bluetooth: BluetoothMeshService,
     unified: MeshService,
 ) : NoiseSessionDelegate {
-
-    var bluetooth: BluetoothMeshService = bluetooth
-        private set
 
     /** Every transport behind one interface; what the session sends through. */
     var unified: MeshService = unified
         private set
 
-    fun replace(bluetooth: BluetoothMeshService, unified: MeshService) {
-        this.bluetooth = bluetooth
+    fun replace(unified: MeshService) {
         this.unified = unified
     }
 
