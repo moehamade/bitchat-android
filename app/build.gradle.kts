@@ -133,6 +133,7 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:navigation"))
     implementation(project(":core:mesh"))
+    implementation(project(":core:nostr"))
 
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)

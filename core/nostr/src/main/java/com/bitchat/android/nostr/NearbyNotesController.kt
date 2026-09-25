@@ -118,7 +118,7 @@ class NearbyNotesController internal constructor(
  * reveal. Explicit bookmarks remain eligible because saving one is itself an
  * intentional location act.
  */
-internal fun geohashesForSampling(
+fun geohashesForSampling(
     availableChannels: List<GeohashChannel>,
     bookmarks: Collection<String>,
     notesRevealed: Boolean,

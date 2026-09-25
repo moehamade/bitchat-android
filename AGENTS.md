@@ -61,7 +61,15 @@ and JVM tests in `src/test/`. Specifications are in `docs/`; tooling is in
 
 `core/mesh/` holds the mesh transport stack both clients run: protocol,
 Noise/crypto, identity, gossip sync, private conversation storage and voice
-frames. `core/domain/` holds the domain models that Android library modules
+frames.
+
+`core/nostr/` holds Nostr relays, gift-wrapped private messages, geohash
+channels and location. It never touches the chat session: private messages land
+in a `PrivateMessageInbox` the session implements, and HTTP clients come from a
+`NostrHttpClients` the app installs, which fails closed so relay traffic cannot
+bypass Tor.
+
+`core/domain/` holds the domain models that Android library modules
 need (Gradle forbids a library module depending on an application module).
 `:app` and `:wear` depend on both. Where the clients differ, `:core:mesh`
 takes the policy from its caller (Bluetooth permissions) or a hook the app

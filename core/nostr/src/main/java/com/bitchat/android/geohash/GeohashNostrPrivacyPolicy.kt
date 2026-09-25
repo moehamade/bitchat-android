@@ -1,6 +1,6 @@
 package com.bitchat.android.geohash
 
-internal object GeohashNostrPrivacyPolicy {
+object GeohashNostrPrivacyPolicy {
     fun livePresenceTargets(
         availableChannels: Collection<GeohashChannel>,
         liveLocationEnabled: Boolean,

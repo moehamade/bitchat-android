@@ -79,7 +79,7 @@ internal class LiveLocationAccessPolicy(
 
 internal const val DEFAULT_LIVE_LOCATION_ENABLED = false
 
-internal object LiveLocationPrivacyGate {
+object LiveLocationPrivacyGate {
     private val policy = LiveLocationAccessPolicy()
     private val revocationListeners = CopyOnWriteArraySet<() -> Unit>()
 
