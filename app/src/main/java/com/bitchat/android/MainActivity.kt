@@ -57,7 +57,6 @@ import com.bitchat.android.ui.PrivateChatSheet
 import com.bitchat.android.ui.SecurityVerificationSheet
 import com.bitchat.android.ui.VerificationHandler
 import com.bitchat.android.ui.VerificationScreen
-import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.debug.DebugSettingsScreen
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.BitchatTheme
@@ -105,7 +104,6 @@ class MainActivity : OrientationAwareActivity() {
     private lateinit var unifiedMeshService: MeshService
     private val mainViewModel: MainViewModel by viewModels()
     private var pendingMeshForegroundServiceStart = false
-    private val chatViewModel: ChatViewModel by viewModels()
 
     // Held by ActivityRetainedComponent, so the back stack outlives configuration
     // changes without being rebuilt here.
@@ -280,7 +278,6 @@ class MainActivity : OrientationAwareActivity() {
                         entry<OnboardingRoute> { OnboardingFlowScreen(onboardingModifier) }
                         entry<ChatRoute> {
                             ChatScreen(
-                                viewModel = chatViewModel,
                                 onShowAbout = { navigator.goTo(AboutRoute) },
                                 onShowLocationNotes = { navigator.goTo(LocationNotesRoute) },
                                 onShowChatUser = { nickname, messageId ->

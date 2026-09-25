@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.R
 import com.bitchat.android.geohash.ChannelID
@@ -56,7 +57,6 @@ import com.bitchat.android.ui.theme.BitchatMotion
  */
 @Composable
 fun ChatScreen(
-    viewModel: ChatViewModel,
     // No default. A default would let a future call site silently keep showing
     // About as a sheet instead of navigating to the route.
     onShowAbout: () -> Unit,
@@ -68,6 +68,9 @@ fun ChatScreen(
     // stack, and covers the moment between opening the chat and the ViewModel
     // selecting it, when the selection is still empty.
     openPrivateChatID: String?,
+    // Scoped to the chat's navigation entry. The session it reads lives in the
+    // Activity's retained scope, so recreating this loses nothing.
+    viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
