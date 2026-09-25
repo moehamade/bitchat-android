@@ -4,6 +4,7 @@ import android.content.Context
 import com.bitchat.android.mesh.BluetoothMeshService
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.service.MeshServiceHolder
+import com.bitchat.android.ui.SessionMeshSource
 import com.bitchat.android.ui.WifiAwarePeers
 import com.bitchat.android.wifiaware.WifiAwareController
 import dagger.Module
@@ -35,6 +36,19 @@ object MeshModule {
     fun provideMeshService(
         @ApplicationContext context: Context
     ): MeshService = MeshServiceHolder.getUnifiedOrCreate(context)
+
+    /** Panic clear's restart: exactly the holder calls it made, in the same order. */
+    @Provides
+    fun provideSessionMeshSource(
+        @ApplicationContext context: Context
+    ): SessionMeshSource = object : SessionMeshSource {
+        override fun recreate(): MeshService {
+            // Clear the holder so getOrCreate() returns a fresh instance
+            MeshServiceHolder.clear()
+            MeshServiceHolder.getOrCreate(context)
+            return MeshServiceHolder.getUnifiedOrCreate(context)
+        }
+    }
 
     @Provides
     fun provideWifiAwarePeers(): WifiAwarePeers = object : WifiAwarePeers {

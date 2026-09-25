@@ -7,7 +7,7 @@ import javax.inject.Inject
 /**
  * The mesh the chat session talks to.
  *
- * Read once from MeshServiceHolder when the session starts and replaced only
+ * Read once from the injected mesh when the session starts and replaced only
  * by a panic clear, which recreates the mesh with a fresh identity. It is not
  * re-read from the holder on each use: the foreground service clears the
  * holder when it stops, and re-reading would quietly create a new mesh that

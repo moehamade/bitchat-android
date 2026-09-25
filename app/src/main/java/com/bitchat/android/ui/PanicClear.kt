@@ -7,7 +7,6 @@ import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.geohash.GeohashBookmarksStore
 import com.bitchat.android.geohash.LocationChannelManager
 import com.bitchat.android.identity.SecureIdentityStateManager
-import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.services.ConversationListPreferences
 import com.bitchat.android.services.SeenMessageStore
 import dagger.Lazy
@@ -32,6 +31,7 @@ class PanicClear @Inject constructor(
     @ApplicationContext private val context: Context,
     private val state: ChatState,
     private val sessionMesh: ChatSessionMesh,
+    private val meshSource: SessionMeshSource,
     private val meshDelegate: ChatMeshDelegate,
     private val messageManager: MessageManager,
     private val channelManager: ChannelManager,
@@ -156,12 +156,8 @@ class PanicClear @Inject constructor(
     private fun recreateMeshServiceAfterPanic() {
         val oldPeerID = mesh.myPeerID
 
-        // Clear the holder so getOrCreate() returns a fresh instance
-        MeshServiceHolder.clear()
-
         // Create fresh mesh service with new identity (keys were regenerated in clearAllCryptographicData)
-        MeshServiceHolder.getOrCreate(context)
-        val freshUnifiedMeshService = MeshServiceHolder.getUnifiedOrCreate(context)
+        val freshUnifiedMeshService = meshSource.recreate()
 
         // Replace the session's reference and set up the new service
         sessionMesh.replace(freshUnifiedMeshService)

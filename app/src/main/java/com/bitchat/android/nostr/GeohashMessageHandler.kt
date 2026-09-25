@@ -14,7 +14,7 @@ import java.util.Date
  * GeohashMessageHandler
  * - Processes kind=20000 Nostr events for geohash channels
  * - Updates repository for participants + nicknames
- * - Emits messages to MessageManager
+ * - Emits messages through the addChannelMessage it is given
  */
 class GeohashMessageHandler(
     private val application: Application,
