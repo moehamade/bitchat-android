@@ -1,13 +1,17 @@
 package com.bitchat.android.navigation
 
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.lifecycle.ViewModelProvider
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.bitchat.android.MainActivity
 import com.bitchat.android.R
-import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.testhook.ChatSessionTestAccess
 import org.junit.Assert.assertEquals
 import org.junit.BeforeClass
 import org.junit.Rule
@@ -39,7 +43,7 @@ class MessageSendingTest {
         var accepted: Boolean? = null
 
         rule.runOnUiThread {
-            chatViewModel().sendMessage("synthetic mesh message") { accepted = it }
+            session().messageSender().send("synthetic mesh message") { accepted = it }
         }
 
         rule.waitUntil(timeoutMillis = 5_000) { accepted != null }
@@ -53,12 +57,47 @@ class MessageSendingTest {
     fun aCommandRunsInsteadOfBeingSent() {
         rule.awaitChat()
 
-        rule.runOnUiThread { chatViewModel().sendMessage("/w") }
+        rule.runOnUiThread { session().messageSender().send("/w") {} }
 
         rule.waitUntil(timeoutMillis = 5_000) {
             timeline().any { it == "no one else is around right now." }
         }
     }
+
+    /** Sending from the composer posts the message and empties the field. */
+    @Test
+    fun sendingFromTheComposerClearsIt() {
+        rule.awaitChat()
+        composerHolding("").performTextInput("synthetic composer message")
+
+        composerHolding("synthetic composer message").performImeAction()
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            timeline().any { it == "synthetic composer message" }
+        }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodes(hasSetTextAction() and hasText("synthetic composer message"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    /** Picking a suggested command completes it in the composer. */
+    @Test
+    fun pickingACommandSuggestionCompletesIt() {
+        rule.awaitChat()
+        composerHolding("").performTextInput("/cl")
+
+        rule.onNodeWithText("clear chat messages").performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodes(hasSetTextAction() and hasText("/clear "))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    /** The composer is the text field that starts empty; the nickname is editable too. */
+    private fun composerHolding(text: String): SemanticsNodeInteraction =
+        rule.onNode(hasSetTextAction() and hasText(text))
 
     /** The chat user sheet sends through its own ViewModel and closes. */
     @Test
@@ -76,12 +115,11 @@ class MessageSendingTest {
         }
     }
 
-    private fun chatViewModel(): ChatViewModel =
-        ViewModelProvider(rule.activity)[ChatViewModel::class.java]
+    private fun session() = ChatSessionTestAccess.of(rule.activity)
 
     private fun timeline(): List<String> {
         var contents: List<String> = emptyList()
-        rule.runOnUiThread { contents = chatViewModel().messages.value.map { it.content } }
+        rule.runOnUiThread { contents = session().chatState().messages.value.map { it.content } }
         return contents
     }
 }

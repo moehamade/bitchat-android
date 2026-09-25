@@ -26,7 +26,7 @@ import com.bitchat.android.R
  */
 @Composable
 fun LocationNotesSheetPresenter(
-    viewModel: ChatViewModel,
+    nickname: String,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -34,7 +34,6 @@ fun LocationNotesSheetPresenter(
     val availableChannels by locationManager.availableChannels.collectAsStateWithLifecycle()
     val permissionState by locationManager.permissionState.collectAsStateWithLifecycle()
     val isLoadingLocation by locationManager.isLoadingLocation.collectAsStateWithLifecycle()
-    val nickname by viewModel.nickname.collectAsStateWithLifecycle()
 
     // iOS pattern: notesGeohash ?? LocationChannelManager.shared.availableChannels.first(where: { $0.level == .building })?.geohash
     val buildingGeohash = availableChannels.firstOrNull { it.level == GeohashChannelLevel.BUILDING }?.geohash

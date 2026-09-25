@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
@@ -346,8 +347,9 @@ class MainActivity : OrientationAwareActivity() {
                             )
                         }
                         entry<LocationNotesRoute>(metadata = SheetSceneStrategy.sheet()) {
+                            val nickname by chatState.nickname.collectAsStateWithLifecycle()
                             LocationNotesSheetPresenter(
-                                viewModel = chatViewModel,
+                                nickname = nickname,
                                 onDismiss = { navigator.popTo(LocationNotesRoute, inclusive = true) },
                             )
                         }

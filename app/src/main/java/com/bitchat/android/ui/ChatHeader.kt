@@ -43,7 +43,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.text.style.TextOverflow
@@ -646,13 +645,16 @@ fun ChatHeaderContent(
     selectedPrivatePeer: String?,
     currentChannel: String?,
     nickname: String,
-    viewModel: ChatViewModel,
+    header: HeaderState,
     onBackClick: () -> Unit,
     onSidebarClick: () -> Unit,
     onTripleClick: () -> Unit,
     onShowAppInfo: () -> Unit,
     onLocationChannelsClick: () -> Unit,
-    onLocationNotesClick: () -> Unit
+    onLocationNotesClick: () -> Unit,
+    onNicknameChange: (String) -> Unit,
+    onLeaveChannel: (String) -> Unit,
+    onOpenLatestUnreadPrivateChat: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
@@ -662,7 +664,7 @@ fun ChatHeaderContent(
             ChannelHeader(
                 channel = currentChannel,
                 onBackClick = onBackClick,
-                onLeaveChannel = { viewModel.leaveChannel(currentChannel) },
+                onLeaveChannel = { onLeaveChannel(currentChannel) },
                 onSidebarClick = onSidebarClick
             )
         }
@@ -670,13 +672,14 @@ fun ChatHeaderContent(
             // Main header
             MainHeader(
                 nickname = nickname,
-                onNicknameChange = viewModel::setNickname,
+                onNicknameChange = onNicknameChange,
                 onTitleClick = onShowAppInfo,
                 onTripleTitleClick = onTripleClick,
                 onSidebarClick = onSidebarClick,
                 onLocationChannelsClick = onLocationChannelsClick,
                 onLocationNotesClick = onLocationNotesClick,
-                viewModel = viewModel
+                onOpenLatestUnreadPrivateChat = onOpenLatestUnreadPrivateChat,
+                header = header
             )
         }
     }
@@ -716,17 +719,11 @@ private fun MainHeader(
     onSidebarClick: () -> Unit,
     onLocationChannelsClick: () -> Unit,
     onLocationNotesClick: () -> Unit,
-    viewModel: ChatViewModel
+    onOpenLatestUnreadPrivateChat: () -> Unit,
+    header: HeaderState
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val palette = LocalBitchatPalette.current
-    val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
-    val joinedChannels by viewModel.joinedChannels.collectAsStateWithLifecycle()
-    val hasUnreadChannels by viewModel.unreadChannelMessages.collectAsStateWithLifecycle()
-    val hasUnreadPrivateMessages by viewModel.unreadPrivateMessages.collectAsStateWithLifecycle()
-    val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
-    val selectedLocationChannel by viewModel.selectedLocationChannel.collectAsStateWithLifecycle()
-    val geohashPeople by viewModel.geohashPeople.collectAsStateWithLifecycle()
 
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val crowdingMode = headerCrowdingMode(maxWidth)
@@ -777,9 +774,9 @@ private fun MainHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                if (hasUnreadPrivateMessages.isNotEmpty()) {
+                if (header.hasUnreadPrivateMessages) {
                     HeaderIconButton(
-                        onClick = { viewModel.openLatestUnreadPrivateChat() },
+                        onClick = onOpenLatestUnreadPrivateChat,
                         contentDescription = stringResource(R.string.cd_unread_private_messages)
                     ) {
                         Icon(
@@ -796,24 +793,24 @@ private fun MainHeader(
                     horizontalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     LocationNotesButton(
-                        viewModel = viewModel,
+                        selectedLocationChannel = header.selectedLocationChannel,
                         onClick = onLocationNotesClick
                     )
 
                     LocationChannelsButton(
-                        viewModel = viewModel,
+                        selectedChannel = header.selectedLocationChannel,
                         onClick = onLocationChannelsClick,
                         showLabel = crowdingMode != HeaderCrowdingMode.IconOnlyLocationChannel
                     )
                 }
 
                 PeerCounter(
-                    connectedPeers = connectedPeers.filter { it != viewModel.myPeerID },
-                    joinedChannels = joinedChannels,
-                    hasUnreadChannels = hasUnreadChannels,
-                    isConnected = isConnected,
-                    selectedLocationChannel = selectedLocationChannel,
-                    geohashPeople = geohashPeople,
+                    connectedPeers = header.connectedPeers,
+                    joinedChannels = header.joinedChannels,
+                    hasUnreadChannels = header.unreadChannelMessages,
+                    isConnected = header.isConnected,
+                    selectedLocationChannel = header.selectedLocationChannel,
+                    geohashPeople = header.geohashPeople,
                     onClick = onSidebarClick,
                     showJoinedChannelCount = crowdingMode == HeaderCrowdingMode.Full
                 )
@@ -831,14 +828,11 @@ private fun MainHeader(
  */
 @Composable
 private fun LocationChannelsButton(
-    viewModel: ChatViewModel,
+    selectedChannel: com.bitchat.android.geohash.ChannelID?,
     onClick: () -> Unit,
     showLabel: Boolean
 ) {
     val colorScheme = MaterialTheme.colorScheme
-
-    // Get current channel selection from location manager
-    val selectedChannel by viewModel.selectedLocationChannel.collectAsStateWithLifecycle()
 
     val isLocation = selectedChannel is com.bitchat.android.geohash.ChannelID.Location
     val badgeText = when (val channel = selectedChannel) {

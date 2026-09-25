@@ -1,227 +1,224 @@
 package com.bitchat.android.ui
 
-import android.app.Application
 import android.util.Log
-import androidx.lifecycle.AndroidViewModel
-import com.bitchat.android.favorites.FavoritesChangeListener
-import com.bitchat.android.favorites.FavoritesPersistenceService
-import com.bitchat.android.geohash.GeohashBookmarksStore
-import com.bitchat.android.geohash.LocationChannelManager
-import com.bitchat.android.services.ConversationListPreferences
-import dagger.Lazy
-import javax.inject.Provider
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.Job
-import com.bitchat.android.mesh.BluetoothMeshService
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bitchat.android.features.voice.VoiceRecorder
 import com.bitchat.android.mesh.MeshService
-import com.bitchat.android.service.MeshServiceHolder
-import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.model.BitchatMessageType
-import com.bitchat.android.nostr.NostrIdentityBridge
-import com.bitchat.android.nostr.GeohashConversationRegistry
-import com.bitchat.android.protocol.BitchatPacket
-
-
-import kotlinx.coroutines.launch
-import java.util.Date
-import kotlin.random.Random
-import com.bitchat.android.services.VerificationService
 import com.bitchat.android.navigation.Navigator
 import com.bitchat.android.navigation.openPrivateChat
 import com.bitchat.android.services.ContactDirectory
-import com.bitchat.android.services.ContactIdentityResolver
-import com.bitchat.android.features.voice.LiveVoicePreferences
-import com.bitchat.android.features.voice.LiveVoiceTarget
-import com.bitchat.android.features.voice.VoiceRecorder
+import com.bitchat.android.services.ConversationListPreferences
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
- * Refactored ChatViewModel - Main coordinator for bitchat functionality
- * Delegates specific responsibilities to specialized managers while maintaining 100% iOS compatibility
+ * The chat screen's state holder: one [ChatUiState] out, [ChatAction]s in, and
+ * [ChatEvent]s for the composer's local text.
+ *
+ * The session behind the screen, its state and managers, lives in the
+ * Activity's retained scope and is shared with the other screens' ViewModels;
+ * this class only reads it and forwards the screen's requests.
  */
 @HiltViewModel
 class ChatViewModel @Inject constructor(
-    application: Application,
     private val sessionMesh: ChatSessionMesh,
-    // Injected as dagger.Lazy because every one of these was previously reached
-    // through getInstance(...) at the point of use. Resolving them eagerly would
-    // construct them during ViewModel creation, which is earlier than before.
-    private val locationChannelManagerLazy: Lazy<LocationChannelManager>,
-    private val geohashBookmarksStoreLazy: Lazy<GeohashBookmarksStore>,
     private val conversationListPreferences: ConversationListPreferences,
-    // Several openers of a private chat run in here rather than in a screen: a
-    // geohash DM resolves its conversation first, and the unread shortcut picks
-    // one. The ViewModel shares the Activity's retained scope, as the navigator
-    // does, so it never outlives the stack it drives.
+    // The unread shortcut opens a private chat from here rather than from a
+    // screen, because it has to pick the conversation first.
     private val navigator: Navigator,
-    // Shared with the screens' own ViewModels, so it is injected rather than
-    // built here; it lives exactly as long as this ViewModel.
     private val state: ChatState,
-    // The session's managers, shared with the screens' own ViewModels.
     private val dataManager: DataManager,
-    private val messageManager: MessageManager,
     private val channelManager: ChannelManager,
-    val privateChatManager: PrivateChatManager,
     private val commandProcessor: CommandProcessor,
-    private val notificationManager: NotificationManager,
-    private val verificationHandler: VerificationHandler,
     private val mediaSendingManager: MediaSendingManager,
-    private val meshDelegateHandler: MeshDelegateHandler,
-    val geohashSession: GeohashSession,
+    private val geohashSession: GeohashSession,
     private val messageSender: MessageSender,
-    private val privateChatSession: PrivateChatSession,
     private val composerMedia: ComposerMedia,
-    private val meshDelegate: ChatMeshDelegate,
     private val panicClear: PanicClear,
-    private val sessionStartup: ChatSessionStartup,
-) : AndroidViewModel(application) {
+    sessionStartup: ChatSessionStartup,
+) : ViewModel() {
+
+    private companion object {
+        const val TAG = "ChatViewModel"
+    }
 
     private val mesh: MeshService
         get() = sessionMesh.unified
-
-    companion object {
-        private const val TAG = "ChatViewModel"
-    }
-
-
-
-
-
-    fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
-        composerMedia.sendVoiceNote(toPeerIDOrNull, channelOrNull, filePath)
-
-    fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder =
-        composerMedia.createVoiceRecorder(toPeerIDOrNull, channelOrNull)
-
-    fun sendFileNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
-        composerMedia.sendFileNote(toPeerIDOrNull, channelOrNull, filePath)
-
-    fun sendImageNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) =
-        composerMedia.sendImageNote(toPeerIDOrNull, channelOrNull, filePath)
-
-    fun cancelMediaSend(messageId: String) = composerMedia.cancelMediaSend(messageId)
-
-    fun approveLegacyPrivateMedia(requestId: String) {
-        mediaSendingManager.approveLegacyPrivateMedia(requestId)
-    }
-
-    fun cancelLegacyPrivateMedia(requestId: String) {
-        mediaSendingManager.cancelLegacyPrivateMedia(requestId)
-    }
-
-
-    // Transfer progress tracking
-    private val transferMessageMap = mutableMapOf<String, String>()
-    private val messageTransferMap = mutableMapOf<String, String>()
-
-    // dagger.Lazy caches, so these resolve once and stay cheap thereafter.
-    private val locationChannelManager: LocationChannelManager
-        get() = locationChannelManagerLazy.get()
-    private val geohashBookmarksStore: GeohashBookmarksStore
-        get() = geohashBookmarksStoreLazy.get()
-    val verifiedFingerprints = verificationHandler.verifiedFingerprints
-
-    val messages: StateFlow<List<BitchatMessage>> = state.messages
-    val connectedPeers: StateFlow<List<String>> = state.connectedPeers
-    val nickname: StateFlow<String> = state.nickname
-    val isConnected: StateFlow<Boolean> = state.isConnected
-    val privateChats: StateFlow<Map<String, List<BitchatMessage>>> = state.privateChats
-    val selectedPrivateChatPeer: StateFlow<String?> = state.selectedPrivateChatPeer
-    val unreadPrivateMessages: StateFlow<Set<String>> = state.unreadPrivateMessages
-    val joinedChannels: StateFlow<Set<String>> = state.joinedChannels
-    val currentChannel: StateFlow<String?> = state.currentChannel
-    val channelMessages: StateFlow<Map<String, List<BitchatMessage>>> = state.channelMessages
-    val unreadChannelMessages: StateFlow<Map<String, Int>> = state.unreadChannelMessages
-    val showPasswordPrompt: StateFlow<Boolean> = state.showPasswordPrompt
-    val passwordPromptChannel: StateFlow<String?> = state.passwordPromptChannel
-    val showCommandSuggestions: StateFlow<Boolean> = state.showCommandSuggestions
-    val commandSuggestions: StateFlow<List<CommandSuggestion>> = state.commandSuggestions
-    val showMentionSuggestions: StateFlow<Boolean> = state.showMentionSuggestions
-    val mentionSuggestions: StateFlow<List<String>> = state.mentionSuggestions
-    val favoritePeers: StateFlow<Set<String>> = state.favoritePeers
-    val peerFavoritedUs: StateFlow<Set<String>> = state.peerFavoritedUs
-    val peerSessionStates: StateFlow<Map<String, String>> = state.peerSessionStates
-    val peerFingerprints: StateFlow<Map<String, String>> = state.peerFingerprints
-    val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
-    val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
-    val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
-    val legacyPrivateMediaConsent: StateFlow<LegacyPrivateMediaConsentRequest?> =
-        mediaSendingManager.legacyPrivateMediaConsent
-    val selectedLocationChannel: StateFlow<com.bitchat.android.geohash.ChannelID?> = state.selectedLocationChannel
-    val isTeleported: StateFlow<Boolean> = state.isTeleported
-    val geohashPeople: StateFlow<List<GeoPerson>> = state.geohashPeople
-    val teleportedGeo: StateFlow<Set<String>> = state.teleportedGeo
-    val meshServiceFacade: MeshService
-        get() = mesh
-    val myPeerID: String
-        get() = mesh.myPeerID
 
     init {
         // Idempotent: a recreated ViewModel finds the session already running.
         sessionStartup.start()
     }
 
-    // MARK: - Nickname Management
-    
-    fun setNickname(newNickname: String) {
-        state.setNickname(newNickname)
-        dataManager.saveNickname(newNickname)
-        mesh.sendBroadcastAnnounce()
-    }
-    
-    /**
-     * Ensure Nostr DM subscription for a geohash conversation key if known
-     */
-    private fun ensureGeohashDMSubscriptionIfNeeded(convKey: String) {
-        geohashSession.ensureGeohashDMSubscriptionForConversation(convKey)
-    }
+    // Each group is rebuilt from the current values whenever one of its inputs
+    // changes, and seeded the same way, so the first frame shows the session's
+    // state rather than an empty default.
+    private fun timelineNow() = timelineStateOf(
+        meshMessages = state.messages.value,
+        channelMessages = state.channelMessages.value,
+        currentChannel = state.currentChannel.value,
+        selectedPrivatePeer = state.selectedPrivateChatPeer.value,
+        selectedLocationChannel = state.selectedLocationChannel.value,
+        nickname = state.nickname.value,
+        connectedPeers = state.connectedPeers.value,
+        peerNicknames = state.peerNicknames.value,
+        geohashPeople = state.geohashPeople.value,
+    )
 
-    // MARK: - Channel Management (delegated)
-    
-    fun joinChannel(channel: String, password: String? = null): Boolean {
-        return channelManager.joinChannel(channel, password, mesh.myPeerID)
-    }
-    
-    fun switchToChannel(channel: String?) {
-        channelManager.switchToChannel(channel)
-    }
-    
-    fun leaveChannel(channel: String) {
-        channelManager.leaveChannel(channel)
-        mesh.sendMessage("left $channel", emptyList(), null)
-    }
-    
-    // MARK: - Private Chat Management (delegated)
-    
-    
+    private fun headerNow() = headerStateOf(
+        connectedPeers = state.connectedPeers.value,
+        myPeerID = mesh.myPeerID,
+        joinedChannels = state.joinedChannels.value,
+        unreadChannelMessages = state.unreadChannelMessages.value,
+        unreadPrivateMessages = state.unreadPrivateMessages.value,
+        isConnected = state.isConnected.value,
+        selectedLocationChannel = state.selectedLocationChannel.value,
+        geohashPeople = state.geohashPeople.value,
+    )
 
+    private fun composerNow() = ComposerState(
+        showCommandSuggestions = state.showCommandSuggestions.value,
+        commandSuggestions = state.commandSuggestions.value,
+        showMentionSuggestions = state.showMentionSuggestions.value,
+        mentionSuggestions = state.mentionSuggestions.value,
+    )
 
-    fun endPrivateChat() = privateChatSession.end()
+    private fun dialogsNow() = DialogState(
+        showPasswordPrompt = state.showPasswordPrompt.value,
+        passwordPromptChannel = state.passwordPromptChannel.value,
+        legacyPrivateMediaConsent = mediaSendingManager.legacyPrivateMediaConsent.value,
+    )
 
-    /** Ends [conversationID]'s chat, unless another has been selected since. */
-    fun endPrivateChat(conversationID: String) = privateChatSession.end(conversationID)
+    private fun <T> groupOf(inputs: List<Flow<Any?>>, now: () -> T): Flow<T> =
+        combine(inputs) { now() }
 
+    val uiState: StateFlow<ChatUiState> = combine(
+        groupOf(
+            listOf(
+                state.messages, state.channelMessages, state.currentChannel,
+                state.selectedPrivateChatPeer, state.selectedLocationChannel, state.nickname,
+                state.connectedPeers, state.peerNicknames, state.geohashPeople,
+            ),
+            ::timelineNow,
+        ),
+        groupOf(
+            listOf(
+                state.connectedPeers, state.joinedChannels, state.unreadChannelMessages,
+                state.unreadPrivateMessages, state.isConnected, state.selectedLocationChannel,
+                state.geohashPeople,
+            ),
+            ::headerNow,
+        ),
+        groupOf(
+            listOf(
+                state.showCommandSuggestions, state.commandSuggestions,
+                state.showMentionSuggestions, state.mentionSuggestions,
+            ),
+            ::composerNow,
+        ),
+        groupOf(
+            listOf(
+                state.showPasswordPrompt, state.passwordPromptChannel,
+                mediaSendingManager.legacyPrivateMediaConsent,
+            ),
+            ::dialogsNow,
+        ),
+        ::ChatUiState,
+    ).stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        ChatUiState(timelineNow(), headerNow(), composerNow(), dialogsNow()),
+    )
 
+    private val _events = Channel<ChatEvent>(Channel.BUFFERED)
+    val events: Flow<ChatEvent> = _events.receiveAsFlow()
 
+    /** Renders media and resolves mentions in the timeline's rows. */
+    val meshService: MeshService
+        get() = mesh
 
-
-
-    internal fun conversationDraft(conversationID: String?): String =
+    /** The saved composer draft of [conversationID], read when the composer is created. */
+    fun conversationDraft(conversationID: String?): String =
         conversationListPreferences.composerDraft(conversationID)
 
-    internal fun setConversationDraft(conversationID: String?, text: String) =
-        conversationListPreferences.saveComposerDraft(conversationID, text)
+    fun createVoiceRecorder(toPeerIDOrNull: String?, channelOrNull: String?): VoiceRecorder =
+        composerMedia.createVoiceRecorder(toPeerIDOrNull, channelOrNull)
 
-    // MARK: - Open Latest Unread Private Chat
+    fun onAction(action: ChatAction) {
+        when (action) {
+            is ChatAction.ComposerTextChanged -> {
+                conversationListPreferences.saveComposerDraft(action.conversationID, action.text)
+                commandProcessor.updateCommandSuggestions(action.text)
+                commandProcessor.updateMentionSuggestions(action.text, mesh)
+            }
+            is ChatAction.Send -> messageSender.send(action.content) { accepted ->
+                if (accepted) {
+                    conversationListPreferences.saveComposerDraft(action.conversationID, "")
+                    // Clearing the field in code does not report a text change,
+                    // so the popups have to be dismissed here.
+                    commandProcessor.clearSuggestions()
+                    emit(ChatEvent.MessageSent)
+                }
+            }
+            is ChatAction.SelectCommandSuggestion -> emit(
+                ChatEvent.ReplaceComposerText(
+                    commandProcessor.selectCommandSuggestion(action.suggestion)
+                )
+            )
+            is ChatAction.SelectMentionSuggestion -> emit(
+                ChatEvent.ReplaceComposerText(
+                    commandProcessor.selectMentionSuggestion(action.nickname, action.currentText)
+                )
+            )
+            is ChatAction.SendVoiceNote ->
+                composerMedia.sendVoiceNote(action.peerID, action.channel, action.path)
+            is ChatAction.SendImageNote ->
+                composerMedia.sendImageNote(action.peerID, action.channel, action.path)
+            is ChatAction.SendFileNote ->
+                composerMedia.sendFileNote(action.peerID, action.channel, action.path)
+            is ChatAction.CancelMediaSend -> composerMedia.cancelMediaSend(action.messageID)
+            is ChatAction.ApproveLegacyPrivateMedia ->
+                mediaSendingManager.approveLegacyPrivateMedia(action.requestID)
+            is ChatAction.CancelLegacyPrivateMedia ->
+                mediaSendingManager.cancelLegacyPrivateMedia(action.requestID)
+            is ChatAction.SubmitChannelPassword -> {
+                if (channelManager.joinChannel(action.channel, action.password, mesh.myPeerID)) {
+                    state.clearPasswordPrompt()
+                }
+            }
+            // Both Back and the dialog's own buttons clear the one flag, so it
+            // cannot be left set by one path and cleared by another. While it is
+            // set, [backActionFor] ranks it above exiting a private chat or a channel.
+            ChatAction.DismissPasswordPrompt -> state.clearPasswordPrompt()
+            is ChatAction.SetNickname -> {
+                state.setNickname(action.nickname)
+                dataManager.saveNickname(action.nickname)
+                mesh.sendBroadcastAnnounce()
+            }
+            is ChatAction.LeaveChannel -> {
+                channelManager.leaveChannel(action.channel)
+                mesh.sendMessage("left ${action.channel}", emptyList(), null)
+            }
+            ChatAction.ExitChannel -> channelManager.switchToChannel(null)
+            ChatAction.OpenLatestUnreadPrivateChat -> openLatestUnreadPrivateChat()
+            ChatAction.PanicClear -> panicClear.run()
+        }
+    }
 
-    fun openLatestUnreadPrivateChat() {
+    private fun emit(event: ChatEvent) {
+        viewModelScope.launch { _events.send(event) }
+    }
+
+    private fun openLatestUnreadPrivateChat() {
         try {
             val unreadKeys = state.getUnreadPrivateMessagesValue()
             if (unreadKeys.isEmpty()) return
@@ -250,7 +247,7 @@ class ChatViewModel @Inject constructor(
 
             val openPeer: String = if (targetKey.startsWith("nostr_")) {
                 // Use the exact conversation key for geohash DMs and ensure DM subscription
-                ensureGeohashDMSubscriptionIfNeeded(targetKey)
+                geohashSession.ensureGeohashDMSubscriptionForConversation(targetKey)
                 targetKey
             } else {
                 // Resolve to a canonical mesh peer if needed
@@ -264,85 +261,9 @@ class ChatViewModel @Inject constructor(
                 canonical ?: targetKey
             }
 
-            openPrivateChat(openPeer)
+            navigator.openPrivateChat(ContactDirectory.canonicalConversationId(openPeer))
         } catch (e: Exception) {
             Log.w(TAG, "openLatestUnreadPrivateChat failed: ${e.message}")
         }
     }
-
-    // END - Open Latest Unread Private Chat
-
-    
-    // MARK: - Message Sending
-    
-    fun sendMessage(
-        content: String,
-        onAccepted: (Boolean) -> Unit = {}
-    ) = messageSender.send(content, onAccepted)
-
-    // MARK: - Utility Functions
-    
-    
-
-
-    private fun isConnectedOnMesh(peerID: String): Boolean {
-        return try {
-            mesh.getPeerInfo(peerID)?.isConnected == true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    // MARK: - QR Verification
-    
-
-    // MARK: - Debug and Troubleshooting
-    
-    /** Shows the private chat with [peerID], in place of whatever opened it. */
-    fun openPrivateChat(peerID: String) {
-        navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
-    }
-
-    // MARK: - Command Autocomplete (delegated)
-    
-    fun updateCommandSuggestions(input: String) {
-        commandProcessor.updateCommandSuggestions(input)
-    }
-
-    fun clearSuggestions() {
-        commandProcessor.clearSuggestions()
-    }
-
-    fun selectCommandSuggestion(suggestion: CommandSuggestion): String {
-        return commandProcessor.selectCommandSuggestion(suggestion)
-    }
-    
-    // MARK: - Mention Autocomplete
-    
-    fun updateMentionSuggestions(input: String) {
-        commandProcessor.updateMentionSuggestions(input, mesh)
-    }
-    
-    fun selectMentionSuggestion(nickname: String, currentText: String): String {
-        return commandProcessor.selectMentionSuggestion(nickname, currentText)
-    }
-    
-    fun panicClearAllData() = panicClear.run()
-
-    // MARK: - Navigation Management
-    
-
-    /**
-     * Closes the join-password dialog.
-     *
-     * Both Back and the dialog's own buttons route here, so the flag cannot be
-     * left set by one path and cleared by another. While it is set,
-     * [backActionFor] ranks it above exiting a private chat or a channel.
-     */
-    fun dismissPasswordPrompt() {
-        state.clearPasswordPrompt()
-    }
-
-    // MARK: - Canonical peer identities
-
 }

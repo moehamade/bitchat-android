@@ -3,12 +3,13 @@ package com.bitchat.android.navigation
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.bitchat.android.MainActivity
 import com.bitchat.android.R
-import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.navigation.openPrivateChat
+import com.bitchat.android.services.ContactDirectory
+import com.bitchat.android.testhook.ChatSessionTestAccess
 import com.bitchat.android.ui.NotificationManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -94,7 +95,7 @@ class PrivateChatDestinationTest {
         openPrivateChat(PEER_B)
         awaitSelection(PEER_B)
 
-        rule.runOnUiThread { chatViewModel().endPrivateChat(PEER_A) }
+        rule.runOnUiThread { session().privateChatSession().end(PEER_A) }
 
         assertEquals(PEER_B, selection())
     }
@@ -186,17 +187,18 @@ class PrivateChatDestinationTest {
         awaitSelection(null)
     }
 
-    private fun chatViewModel(): ChatViewModel =
-        ViewModelProvider(rule.activity)[ChatViewModel::class.java]
+    private fun session() = ChatSessionTestAccess.of(rule.activity)
 
     private fun openPrivateChat(peerID: String) {
-        rule.runOnUiThread { chatViewModel().openPrivateChat(peerID) }
+        rule.runOnUiThread {
+            rule.activity.navigator.openPrivateChat(ContactDirectory.canonicalConversationId(peerID))
+        }
         rule.waitForIdle()
     }
 
     private fun selection(): String? {
         var selected: String? = null
-        rule.runOnUiThread { selected = chatViewModel().selectedPrivateChatPeer.value }
+        rule.runOnUiThread { selected = session().chatState().selectedPrivateChatPeer.value }
         return selected
     }
 

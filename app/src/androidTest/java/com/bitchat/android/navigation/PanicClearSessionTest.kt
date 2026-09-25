@@ -1,12 +1,11 @@
 package com.bitchat.android.navigation
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.bitchat.android.MainActivity
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.service.MeshServiceHolder
-import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.testhook.ChatSessionTestAccess
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.BeforeClass
@@ -38,7 +37,7 @@ class PanicClearSessionTest {
         rule.awaitChat()
         val before = sessionMesh()
 
-        rule.runOnUiThread { chatViewModel().panicClearAllData() }
+        rule.runOnUiThread { session().panicClear().run() }
         rule.waitUntil(timeoutMillis = 15_000) { sessionMesh() !== before }
 
         val after = sessionMesh()
@@ -57,12 +56,11 @@ class PanicClearSessionTest {
         rule.waitUntil(timeoutMillis = 5_000) { mesh.delegate === rule.activity.chatMeshDelegate }
     }
 
-    private fun chatViewModel(): ChatViewModel =
-        ViewModelProvider(rule.activity)[ChatViewModel::class.java]
+    private fun session() = ChatSessionTestAccess.of(rule.activity)
 
     private fun sessionMesh(): MeshService {
         lateinit var mesh: MeshService
-        rule.runOnUiThread { mesh = chatViewModel().meshServiceFacade }
+        rule.runOnUiThread { mesh = session().sessionMesh().unified }
         return mesh
     }
 }
