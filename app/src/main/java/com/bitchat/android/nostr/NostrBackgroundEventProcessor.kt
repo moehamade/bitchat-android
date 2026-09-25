@@ -54,8 +54,7 @@ internal class NostrBackgroundEventProcessor(
     )
     private val directMessageHandler = NostrDirectMessageHandler(
         application = application,
-        state = state,
-        privateChatManager = privateChatManager,
+        inbox = com.bitchat.android.ui.ChatPrivateMessageInbox(state, privateChatManager),
         updateDeliveryStatus = ::updateDeliveryStatus,
         scope = scope,
         repo = geohashRepository,

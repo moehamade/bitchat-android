@@ -14,9 +14,6 @@ import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.SeenMessageStore
-import com.bitchat.android.ui.ChatState
-import com.bitchat.android.ui.PrivateChatManager
-import com.bitchat.android.ui.PrivateMessageOrigin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -25,8 +22,7 @@ import java.util.Date
 
 class NostrDirectMessageHandler(
     private val application: Application,
-    private val state: ChatState,
-    private val privateChatManager: PrivateChatManager,
+    private val inbox: PrivateMessageInbox,
     private val updateDeliveryStatus: (String, DeliveryStatus) -> Unit,
     private val scope: CoroutineScope,
     private val repo: GeohashRepository,
@@ -127,8 +123,7 @@ class NostrDirectMessageHandler(
         when (payload.type) {
             NoisePayloadType.PRIVATE_MESSAGE -> {
                 val pm = PrivateMessagePacket.decode(payload.data) ?: return
-                val existingMessages = state.getPrivateChatsValue()[conversationID] ?: emptyList()
-                if (existingMessages.any { it.id == pm.messageID }) return
+                if (inbox.contains(conversationID, pm.messageID)) return
 
                 val favoriteControl = FavoriteControlMessage.parse(pm.content)
                 if (favoriteControl != null) {
@@ -155,21 +150,17 @@ class NostrDirectMessageHandler(
                     timestamp = timestamp,
                     isRelay = false,
                     isPrivate = true,
-                    recipientNickname = state.getNicknameValue(),
+                    recipientNickname = inbox.myNickname,
                     senderPeerID = conversationID,
                     senderNostrPubkey = senderPubkey,
-                    deliveryStatus = DeliveryStatus.Delivered(to = state.getNicknameValue() ?: "Unknown", at = Date())
+                    deliveryStatus = DeliveryStatus.Delivered(to = inbox.myNickname, at = Date())
                 )
 
-                val isViewing = state.getSelectedPrivateChatPeerValue() == conversationID
+                val isViewing = inbox.selectedConversationID == conversationID
                 val suppressUnread = seenStore.hasBeenReadLocally(pm.messageID)
 
                 val admitted = withContext(Dispatchers.Main) {
-                    privateChatManager.handleIncomingPrivateMessageDurably(
-                        message = message,
-                        suppressUnread = suppressUnread,
-                        origin = PrivateMessageOrigin.NOSTR
-                    )
+                    inbox.admit(message, suppressUnread = suppressUnread)
                 }
                 if (!admitted) return
 
@@ -218,17 +209,13 @@ class NostrDirectMessageHandler(
                         timestamp = timestamp,
                         isRelay = false,
                         isPrivate = true,
-                        recipientNickname = state.getNicknameValue(),
+                        recipientNickname = inbox.myNickname,
                         senderPeerID = conversationID,
                         senderNostrPubkey = senderPubkey
                     )
                     Log.d(TAG, "📄 Saved Nostr encrypted incoming file to $savedPath (msgId=$uniqueMsgId)")
                     val admitted = withContext(Dispatchers.Main) {
-                        privateChatManager.handleIncomingPrivateMessageDurably(
-                            message = message,
-                            suppressUnread = false,
-                            origin = PrivateMessageOrigin.NOSTR
-                        )
+                        inbox.admit(message, suppressUnread = false)
                     }
                     if (!admitted) {
                         com.bitchat.android.features.file.FileUtils.deleteStoredMediaPaths(
@@ -293,11 +280,7 @@ class NostrDirectMessageHandler(
             )
 
             withContext(Dispatchers.Main) {
-                privateChatManager.handleIncomingPrivateMessageDurably(
-                    message = systemMessage,
-                    suppressUnread = true,
-                    origin = PrivateMessageOrigin.NOSTR
-                )
+                inbox.admit(systemMessage, suppressUnread = true)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to handle Nostr favorite notification: ${e.message}")

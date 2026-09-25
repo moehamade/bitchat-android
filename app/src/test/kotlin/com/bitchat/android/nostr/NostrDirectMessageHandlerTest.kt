@@ -1,10 +1,12 @@
 package com.bitchat.android.nostr
 
 import android.os.Build
+import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.services.ConversationRepository
 import com.bitchat.android.services.InMemoryConversationStorageCipher
 import com.bitchat.android.services.SeenMessageStore
+import com.bitchat.android.ui.ChatPrivateMessageInbox
 import com.bitchat.android.ui.ChatState
 import com.bitchat.android.ui.DataManager
 import com.bitchat.android.ui.MessageManager
@@ -28,6 +30,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -86,8 +90,7 @@ class NostrDirectMessageHandlerTest {
         whenever(seenStore.hasBeenReadLocally(any())).thenReturn(false)
         val handler = NostrDirectMessageHandler(
             application = application,
-            state = state,
-            privateChatManager = privateChatManager,
+            inbox = ChatPrivateMessageInbox(state, privateChatManager),
             updateDeliveryStatus = { _, _ -> },
             scope = scope,
             repo = GeohashRepository(application, dataManager) { state.getNicknameValue() },
@@ -138,6 +141,62 @@ class NostrDirectMessageHandlerTest {
         assertEquals(listOf(firstId, secondId), messages.map { it.id })
         assertEquals(firstRumorTime * 1000L, messages[0].timestamp.time)
         assertEquals(secondRumorTime * 1000L, messages[1].timestamp.time)
+    }
+
+    /** The sender is told a message arrived only once the session has kept it. */
+    @Test
+    fun `a message the inbox does not admit is never acknowledged`() {
+        val application = RuntimeEnvironment.getApplication()
+        val dataManager = DataManager(application)
+        val seenStore = mock<SeenMessageStore>()
+        whenever(seenStore.hasDelivered(any())).thenReturn(false)
+        whenever(seenStore.hasBeenReadLocally(any())).thenReturn(false)
+        val offered = mutableListOf<String>()
+        val refusingInbox = object : PrivateMessageInbox {
+            override val myNickname = "recipient"
+            override val selectedConversationID: String? = null
+            override fun contains(conversationID: String, messageID: String) = false
+            override suspend fun admit(message: BitchatMessage, suppressUnread: Boolean): Boolean {
+                offered += message.id
+                return false
+            }
+        }
+        val handler = NostrDirectMessageHandler(
+            application = application,
+            inbox = refusingInbox,
+            updateDeliveryStatus = { _, _ -> },
+            scope = scope,
+            repo = GeohashRepository(application, dataManager) { "recipient" },
+            dataManager = dataManager,
+            seenStoreProvider = { seenStore }
+        )
+        val sender = NostrIdentity.generate()
+        val recipient = NostrIdentity.generate()
+        val now = (System.currentTimeMillis() / 1000).toInt()
+        val messageId = "refused-message"
+
+        handler.onGiftWrap(
+            privateMessageGiftWrap(
+                content = requireNotNull(
+                    NostrEmbeddedBitChat.encodePMForNostrNoRecipient(
+                        content = "refused",
+                        messageID = messageId,
+                        senderPeerID = "0011223344556677"
+                    )
+                ),
+                sender = sender,
+                recipient = recipient,
+                rumorCreatedAt = now - 60,
+                giftWrapCreatedAt = now - 5
+            ),
+            "",
+            recipient
+        )
+        kotlinx.coroutines.runBlocking {
+            withTimeout(5_000) { while (messageId !in offered) delay(10) }
+        }
+
+        verify(seenStore, never()).markDelivered(messageId)
     }
 
     private fun waitForMessage(state: ChatState, messageId: String) {
