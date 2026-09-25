@@ -1658,79 +1658,14 @@ fun PrivateChatSheet(
     val viewModel = hiltViewModel<PrivateChatViewModel, PrivateChatViewModel.Factory>(
         creationCallback = { factory -> factory.create(routeConversationID) }
     )
-    val peerID by viewModel.conversationID.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val onAction = viewModel::onAction
     val colorScheme = MaterialTheme.colorScheme
-    val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
-    val peerNicknames by viewModel.peerNicknames.collectAsStateWithLifecycle()
-    val nickname by viewModel.nickname.collectAsStateWithLifecycle()
-    val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
-    val peerDirectMap by viewModel.peerDirect.collectAsStateWithLifecycle()
-    val peerSessionStates by viewModel.peerSessionStates.collectAsStateWithLifecycle()
-    val favoritePeers by viewModel.favoritePeers.collectAsStateWithLifecycle()
-    val peerFavoritedUs by viewModel.peerFavoritedUs.collectAsStateWithLifecycle()
-    val peerFingerprints by viewModel.peerFingerprints.collectAsStateWithLifecycle()
-
-    val verifiedFingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
-    val wifiAwareConnected by com.bitchat.android.wifiaware.WifiAwareController.connectedPeers.collectAsStateWithLifecycle()
-    val contactResolution = remember(peerID, connectedPeers, favoritePeers) {
-        ContactDirectory.resolve(peerID)
-    }
-    val activeMeshPeerID = contactResolution.meshPeerID
-    val isWifiAware = activeMeshPeerID in wifiAwareConnected.keys || peerID in wifiAwareConnected.keys
-
-    val isNostrPeer = peerID.startsWith("nostr_") || peerID.startsWith("nostr:")
-    val favoriteRelationship = remember(peerID, favoritePeers, peerFavoritedUs) {
-        try {
-            FavoritesPersistenceService.shared.getFavoriteStatus(peerID)
-        } catch (_: Exception) {
-            null
-        }
-    }
-    val isDirect = activeMeshPeerID?.let { peerDirectMap[it] } == true || peerDirectMap[peerID] == true
-    val isConnected = activeMeshPeerID?.let { connectedPeers.contains(it) } == true || connectedPeers.contains(peerID) || isDirect
-    val isNostrReachableFavorite =
-        !isConnected && favoriteRelationship?.isMutual == true && favoriteRelationship.peerNostrPublicKey != null
-
-    // Compute display name and title text reactively
-    val displayName = remember(peerID, peerNicknames, favoriteRelationship) {
-        peerNicknames[peerID]
-            ?: activeMeshPeerID?.let { peerNicknames[it] }
-            ?: contactResolution.displayName
-            ?: favoriteRelationship?.peerNickname?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
-            ?: viewModel.resolvePeerDisplayNameForFingerprint(peerID)
-    }
-    val titleText = remember(peerID, peerNicknames, favoriteRelationship) {
-        if (isNostrPeer) {
-            val gh = GeohashConversationRegistry.get(peerID) ?: "geohash"
-            val fullPubkey = GeohashAliasRegistry.get(peerID) ?: ""
-            val name = if (fullPubkey.isNotEmpty()) {
-                viewModel.geohashSession.displayNameForGeohashConversation(fullPubkey, gh)
-            } else {
-                peerNicknames[peerID] ?: "Unknown"
-            }
-            "#$gh/@$name"
-        } else {
-            displayName
-        }
-    }
-
-    val conversationID = contactResolution.conversationID
-    val messages = privateChats[conversationID] ?: privateChats[peerID] ?: emptyList()
-    val sessionState = resolveConversationSessionState(
-        conversationID = peerID,
-        activeMeshPeerID = activeMeshPeerID,
-        peerSessionStates = peerSessionStates
-    )
-    val fingerprint = activeMeshPeerID?.let { peerFingerprints[it] }
-        ?: peerFingerprints[peerID]
-        ?: ContactIdentityResolver.fingerprintFromContactConversationId(peerID)
-    val isFavorite = remember(favoritePeers, fingerprint, peerID, favoriteRelationship) {
-        if (fingerprint != null) favoritePeers.contains(fingerprint) else viewModel.isFavorite(peerID)
-    }
-    val theyFavoritedUs = remember(peerFavoritedUs, fingerprint, favoriteRelationship) {
-        (fingerprint != null && peerFavoritedUs.contains(fingerprint)) ||
-            favoriteRelationship?.theyFavoritedUs == true
-    }
+    val peerID = uiState.conversationID
+    val isNostrPeer = uiState.isNostrPeer
+    val isNostrReachableFavorite = uiState.isNostrReachableFavorite
+    val isFavorite = uiState.isFavorite
+    val theyFavoritedUs = uiState.theyFavoritedUs
 
     // Celebrate being favorited: a springy wobble of the header star. Springs rather than
     // keyframed tweens, matching the app's press feedback, so the settle overshoots slightly.
@@ -1761,10 +1696,6 @@ fun PrivateChatSheet(
         }
     }
 
-    val isVerified = remember(peerID, verifiedFingerprints) {
-        viewModel.isPeerVerified(peerID, verifiedFingerprints)
-    }
-
     val palette = LocalBitchatPalette.current
     // Three-state star: grey outline (no relation), orange outline (they favorited us),
     // filled orange (we favorited them, mutual or not).
@@ -1789,22 +1720,7 @@ fun PrivateChatSheet(
             var forceScrollToBottom by remember { mutableStateOf(false) }
             var isScrolledUp by remember { mutableStateOf(false) }
 
-            MessagesList(
-                messages = messages,
-                currentUserNickname = nickname,
-                meshService = viewModel.mesh,
-                modifier = Modifier.weight(1f),
-                conversationKey = "dm:$peerID",
-                forceScrollToBottom = forceScrollToBottom,
-                onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
-                onNicknameClick = { /* handle mention */ },
-                onMessageLongPress = { /* handle long press */ },
-                onCancelTransfer = { msg -> viewModel.cancelMediaSend(msg.id) },
-                onImageClick = { _, _, _ -> /* handle image click */ }
-            )
-
-            // Input section. No divider here: ChatInputSection draws its own fade and
-            // hairline.
+            // Input section state, declared here so a sent message can clear it.
             var messageText by remember(peerID) {
                 mutableStateOf(
                     androidx.compose.ui.text.input.TextFieldValue(
@@ -1813,35 +1729,53 @@ fun PrivateChatSheet(
                 )
             }
 
+            ObserveAsEvents(viewModel.events) { event ->
+                when (event) {
+                    PrivateChatEvent.MessageSent -> {
+                        messageText = androidx.compose.ui.text.input.TextFieldValue("")
+                        forceScrollToBottom = !forceScrollToBottom
+                    }
+                }
+            }
+
+            MessagesList(
+                messages = uiState.messages,
+                currentUserNickname = uiState.nickname,
+                meshService = viewModel.mesh,
+                modifier = Modifier.weight(1f),
+                conversationKey = "dm:$peerID",
+                forceScrollToBottom = forceScrollToBottom,
+                onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
+                onNicknameClick = { /* handle mention */ },
+                onMessageLongPress = { /* handle long press */ },
+                onCancelTransfer = { msg -> onAction(PrivateChatAction.CancelMediaSend(msg.id)) },
+                onImageClick = { _, _, _ -> /* handle image click */ }
+            )
+
+            // Input section. No divider here: ChatInputSection draws its own fade and
+            // hairline.
             ChatInputSection(
                 messageText = messageText,
                 onMessageTextChange = { newText ->
                     messageText = newText
-                    viewModel.saveDraft(peerID, newText.text)
+                    onAction(PrivateChatAction.ComposerTextChanged(newText.text))
                     // Do not update the shared suggestion state here: this sheet
                     // renders its own popups as hidden, so an update only leaves
                     // a stale popup behind for the main composer.
                 },
                 onSend = {
                     if (messageText.text.trim().isNotEmpty()) {
-                        viewModel.send(messageText.text.trim()) { accepted ->
-                            if (accepted) {
-                                messageText =
-                                    androidx.compose.ui.text.input.TextFieldValue("")
-                                viewModel.saveDraft(peerID, "")
-                                forceScrollToBottom = !forceScrollToBottom
-                            }
-                        }
+                        onAction(PrivateChatAction.Send(messageText.text.trim()))
                     }
                 },
                 onSendVoiceNote = { peer, channel, path ->
-                    viewModel.sendVoiceNote(peer, channel, path)
+                    onAction(PrivateChatAction.SendVoiceNote(peer, channel, path))
                 },
                 onSendImageNote = { peer, channel, path ->
-                    viewModel.sendImageNote(peer, channel, path)
+                    onAction(PrivateChatAction.SendImageNote(peer, channel, path))
                 },
                 onSendFileNote = { peer, channel, path ->
-                    viewModel.sendFileNote(peer, channel, path)
+                    onAction(PrivateChatAction.SendFileNote(peer, channel, path))
                 },
                 recorderFactory = viewModel::createVoiceRecorder,
                 showCommandSuggestions = false,
@@ -1852,7 +1786,7 @@ fun PrivateChatSheet(
                 onMentionSuggestionClick = { },
                 selectedPrivatePeer = peerID,
                 currentChannel = null,
-                nickname = nickname,
+                nickname = uiState.nickname,
                 colorScheme = colorScheme,
                 showMediaButtons = true
             )
@@ -1868,8 +1802,8 @@ fun PrivateChatSheet(
             ConversationHeader(
                 leadingIconRes = conversationTransportIcon(
                     isReachedOverInternet = isNostrPeer || isNostrReachableFavorite,
-                    isWifiAware = isWifiAware,
-                    isDirect = isDirect
+                    isWifiAware = uiState.isWifiAware,
+                    isDirect = uiState.isDirect
                 ),
                 leadingIconTint = colorScheme.primary,
                 leadingContentDescription = when {
@@ -1877,10 +1811,10 @@ fun PrivateChatSheet(
                         stringResource(R.string.cd_nostr_reachable)
                     else -> null
                 },
-                title = titleText
+                title = uiState.titleText
             ) {
                 ConversationHeaderAction(
-                    onClick = { viewModel.toggleFavorite(peerID) },
+                    onClick = { onAction(PrivateChatAction.ToggleFavorite) },
                     contentDescription = if (isFavorite) {
                         stringResource(R.string.cd_remove_favorite)
                     } else {
@@ -1907,7 +1841,7 @@ fun PrivateChatSheet(
                     )
                 }
 
-                if (isVerified) {
+                if (uiState.isVerified) {
                     ConversationHeaderStatus {
                         Icon(
                             imageVector = Icons.Filled.Verified,
@@ -1929,7 +1863,7 @@ fun PrivateChatSheet(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             NoiseSessionIcon(
-                                sessionState = sessionState,
+                                sessionState = uiState.sessionState,
                                 modifier = Modifier.size(HeaderIconSize)
                             )
                         }

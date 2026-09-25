@@ -4,16 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bitchat.android.features.voice.VoiceRecorder
 import com.bitchat.android.mesh.MeshService
-import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.favorites.FavoritesPersistenceService
+import com.bitchat.android.nostr.GeohashAliasRegistry
+import com.bitchat.android.nostr.GeohashConversationRegistry
 import com.bitchat.android.services.ContactDirectory
+import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.ConversationListPreferences
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -39,8 +46,9 @@ class PrivateChatViewModel @AssistedInject constructor(
     private val composerMedia: ComposerMedia,
     private val contactFavorites: ContactFavorites,
     private val verificationHandler: VerificationHandler,
-    val geohashSession: GeohashSession,
+    private val geohashSession: GeohashSession,
     private val conversationListPreferences: ConversationListPreferences,
+    private val wifiAwarePeers: WifiAwarePeers,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -56,18 +64,68 @@ class PrivateChatViewModel @AssistedInject constructor(
             initialValue = ContactDirectory.canonicalConversationId(routeConversationID),
         )
 
-    // The session's state the screen reads. Derived display values stay in
-    // the screen for now; each flow here is the one it read from ChatViewModel.
-    val privateChats: StateFlow<Map<String, List<BitchatMessage>>> = state.privateChats
-    val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
-    val nickname: StateFlow<String> = state.nickname
-    val connectedPeers: StateFlow<List<String>> = state.connectedPeers
-    val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
-    val peerSessionStates: StateFlow<Map<String, String>> = state.peerSessionStates
-    val favoritePeers: StateFlow<Set<String>> = state.favoritePeers
-    val peerFavoritedUs: StateFlow<Set<String>> = state.peerFavoritedUs
-    val peerFingerprints: StateFlow<Map<String, String>> = state.peerFingerprints
-    val verifiedFingerprints: StateFlow<Set<String>> = verificationHandler.verifiedFingerprints
+    private val resolvers = object : PrivateChatResolvers {
+        override fun contact(conversationID: String) = ContactDirectory.resolve(conversationID)
+
+        override fun favoriteStatus(conversationID: String) = try {
+            FavoritesPersistenceService.shared.getFavoriteStatus(conversationID)
+        } catch (_: Exception) {
+            null
+        }
+
+        override fun fingerprintDisplayName(conversationID: String) =
+            verificationHandler.resolvePeerDisplayNameForFingerprint(conversationID)
+
+        override fun geohashOf(conversationID: String) =
+            GeohashConversationRegistry.get(conversationID)
+
+        override fun nostrPubkeyOf(conversationID: String) =
+            GeohashAliasRegistry.get(conversationID)
+
+        override fun geohashDisplayName(nostrPubkeyHex: String, geohash: String) =
+            geohashSession.displayNameForGeohashConversation(nostrPubkeyHex, geohash)
+
+        override fun fingerprintFromContactConversationID(conversationID: String) =
+            ContactIdentityResolver.fingerprintFromContactConversationId(conversationID)
+
+        override fun verificationFingerprint(conversationID: String) =
+            verificationHandler.getPeerFingerprintForDisplay(conversationID)
+
+        override fun isFavorite(conversationID: String) = contactFavorites.isFavorite(conversationID)
+    }
+
+    // Rebuilt from the current values whenever an input changes, and seeded the
+    // same way. The registries the resolvers read are not observable; they are
+    // re-read on every change, as the screen's remember blocks re-read them.
+    private fun uiStateNow() = privateChatUiStateFor(
+        PrivateChatInputs(
+            conversationID = conversationID.value,
+            privateChats = state.privateChats.value,
+            peerNicknames = state.peerNicknames.value,
+            nickname = state.nickname.value,
+            connectedPeers = state.connectedPeers.value,
+            peerDirect = state.peerDirect.value,
+            peerSessionStates = state.peerSessionStates.value,
+            favoritePeers = state.favoritePeers.value,
+            peerFavoritedUs = state.peerFavoritedUs.value,
+            peerFingerprints = state.peerFingerprints.value,
+            verifiedFingerprints = verificationHandler.verifiedFingerprints.value,
+            wifiAwarePeerIDs = wifiAwarePeers.connected.value.keys,
+        ),
+        resolvers,
+    )
+
+    val uiState: StateFlow<PrivateChatUiState> = combine(
+        listOf(
+            conversationID, state.privateChats, state.peerNicknames, state.nickname,
+            state.connectedPeers, state.peerDirect, state.peerSessionStates,
+            state.favoritePeers, state.peerFavoritedUs, state.peerFingerprints,
+            verificationHandler.verifiedFingerprints, wifiAwarePeers.connected,
+        )
+    ) { uiStateNow() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), uiStateNow())
+
+    private val _events = Channel<PrivateChatEvent>(Channel.BUFFERED)
+    val events: Flow<PrivateChatEvent> = _events.receiveAsFlow()
 
     val mesh: MeshService
         get() = sessionMesh.unified
@@ -90,39 +148,32 @@ class PrivateChatViewModel @AssistedInject constructor(
         privateChatSession.end(routeConversationID)
     }
 
-    fun send(content: String, onAccepted: (Boolean) -> Unit) =
-        messageSender.send(content, onAccepted)
-
-    fun sendVoiceNote(peerID: String?, channel: String?, path: String) =
-        composerMedia.sendVoiceNote(peerID, channel, path)
-
-    fun sendImageNote(peerID: String?, channel: String?, path: String) =
-        composerMedia.sendImageNote(peerID, channel, path)
-
-    fun sendFileNote(peerID: String?, channel: String?, path: String) =
-        composerMedia.sendFileNote(peerID, channel, path)
+    fun onAction(action: PrivateChatAction) {
+        val conversation = conversationID.value
+        when (action) {
+            is PrivateChatAction.ComposerTextChanged ->
+                conversationListPreferences.saveComposerDraft(conversation, action.text)
+            is PrivateChatAction.Send -> messageSender.send(action.content) { accepted ->
+                if (accepted) {
+                    conversationListPreferences.saveComposerDraft(conversation, "")
+                    viewModelScope.launch { _events.send(PrivateChatEvent.MessageSent) }
+                }
+            }
+            is PrivateChatAction.SendVoiceNote ->
+                composerMedia.sendVoiceNote(action.peerID, action.channel, action.path)
+            is PrivateChatAction.SendImageNote ->
+                composerMedia.sendImageNote(action.peerID, action.channel, action.path)
+            is PrivateChatAction.SendFileNote ->
+                composerMedia.sendFileNote(action.peerID, action.channel, action.path)
+            is PrivateChatAction.CancelMediaSend -> composerMedia.cancelMediaSend(action.messageID)
+            PrivateChatAction.ToggleFavorite -> contactFavorites.toggle(conversation)
+        }
+    }
 
     fun createVoiceRecorder(peerID: String?, channel: String?): VoiceRecorder =
         composerMedia.createVoiceRecorder(peerID, channel)
 
-    fun cancelMediaSend(messageId: String) = composerMedia.cancelMediaSend(messageId)
-
-    fun toggleFavorite(peerID: String) = contactFavorites.toggle(peerID)
-
-    fun isFavorite(peerID: String): Boolean = contactFavorites.isFavorite(peerID)
-
-    fun isPeerVerified(peerID: String, verifiedFingerprints: Set<String>): Boolean {
-        if (peerID.startsWith("nostr_") || peerID.startsWith("nostr:")) return false
-        val fingerprint = verificationHandler.getPeerFingerprintForDisplay(peerID)
-        return fingerprint != null && verifiedFingerprints.contains(fingerprint)
-    }
-
-    fun resolvePeerDisplayNameForFingerprint(peerID: String): String =
-        verificationHandler.resolvePeerDisplayNameForFingerprint(peerID)
-
+    /** The saved composer draft of [conversationID], read when the composer is created. */
     fun draft(conversationID: String): String =
         conversationListPreferences.composerDraft(conversationID)
-
-    fun saveDraft(conversationID: String, text: String) =
-        conversationListPreferences.saveComposerDraft(conversationID, text)
 }

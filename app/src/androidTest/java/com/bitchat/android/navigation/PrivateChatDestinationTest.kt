@@ -1,7 +1,12 @@
 package com.bitchat.android.navigation
 
 import android.content.Intent
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -22,9 +27,9 @@ import org.junit.runner.RunWith
  * The private chat as a sheet destination, the peer list it opens from and
  * the security sheet stacked over it.
  *
- * The peers are synthetic mesh ids with no device behind them. Nothing here
- * sends a message; what is under test is which conversation is selected as
- * the stack changes, since that decides where the composer sends.
+ * The peers are synthetic mesh ids with no device behind them, so a message
+ * sent to one goes nowhere. What is mostly under test is which conversation is
+ * selected as the stack changes, since that decides where the composer sends.
  */
 @RunWith(AndroidJUnit4::class)
 class PrivateChatDestinationTest {
@@ -51,6 +56,34 @@ class PrivateChatDestinationTest {
 
         assertEquals(listOf(ChatRoute, PrivateChatRoute(PEER_A)), rule.backStack())
         awaitSelection(PEER_A)
+    }
+
+    /** A message sent from the private chat's composer lands in its conversation and clears it. */
+    @Test
+    fun sendingFromThePrivateComposerClearsIt() {
+        rule.awaitChat()
+        openPrivateChat(PEER_A)
+        rule.awaitSheet()
+        awaitSelection(PEER_A)
+
+        // Chat's own composer stays composed under the sheet; the sheet's is the last.
+        rule.onAllNodes(hasSetTextAction() and hasText("")).onLast()
+            .performTextInput("synthetic private message")
+        rule.onNode(hasSetTextAction() and hasText("synthetic private message"))
+            .performImeAction()
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            var contents: List<String> = emptyList()
+            rule.runOnUiThread {
+                contents = session().chatState().privateChats.value[PEER_A]
+                    .orEmpty().map { it.content }
+            }
+            "synthetic private message" in contents
+        }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodes(hasSetTextAction() and hasText("synthetic private message"))
+                .fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test
