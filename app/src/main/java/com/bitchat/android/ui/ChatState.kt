@@ -126,17 +126,6 @@ class ChatState(
     private val _isTeleported = MutableStateFlow<Boolean>(false)
     val isTeleported: StateFlow<Boolean> = _isTeleported.asStateFlow()
     
-    // Geohash people state (iOS-compatible)
-    private val _geohashPeople = MutableStateFlow<List<GeoPerson>>(emptyList())
-    val geohashPeople: StateFlow<List<GeoPerson>> = _geohashPeople.asStateFlow()
-    
-    private val _teleportedGeo = MutableStateFlow<Set<String>>(emptySet())
-    val teleportedGeo: StateFlow<Set<String>> = _teleportedGeo.asStateFlow()
-    
-    // Geohash participant counts reactive state (for real-time location channel counts)
-    private val _geohashParticipantCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val geohashParticipantCounts: StateFlow<Map<String, Int>> = _geohashParticipantCounts.asStateFlow()
-    
 
     val hasUnreadChannels: StateFlow<Boolean> = _unreadChannelMessages
         .map { unreadMap -> unreadMap.values.any { it > 0 } }
@@ -190,10 +179,6 @@ class ChatState(
     fun getFavoritePeersValue() = _favoritePeers.value
     fun getPeerSessionStatesValue() = _peerSessionStates.value
     fun getPeerFingerprintsValue() = _peerFingerprints.value
-    fun getGeohashPeopleValue() = _geohashPeople.value
-
-    fun getTeleportedGeoValue() = _teleportedGeo.value
-    fun getGeohashParticipantCountsValue() = _geohashParticipantCounts.value
     
     // Setters for state updates
     fun setMessages(messages: List<BitchatMessage>) {
@@ -204,10 +189,6 @@ class ChatState(
         _connectedPeers.value = peers
     }
     
-    fun postTeleportedGeo(teleported: Set<String>) {
-        _teleportedGeo.value = teleported
-    }
-
     fun setNickname(nickname: String) {
         _nickname.value = nickname
         com.bitchat.android.services.AppStateStore.setNickname(nickname)
@@ -330,15 +311,4 @@ class ChatState(
     fun setIsTeleported(teleported: Boolean) {
         _isTeleported.value = teleported
     }
-    
-    fun setGeohashPeople(people: List<GeoPerson>) {
-        _geohashPeople.value = people
-    }
-    
-    fun setTeleportedGeo(teleported: Set<String>) {
-        _teleportedGeo.value = teleported
-    }
-    
-    fun setGeohashParticipantCounts(counts: Map<String, Int>) {
-        _geohashParticipantCounts.value = counts
-    }}
+}

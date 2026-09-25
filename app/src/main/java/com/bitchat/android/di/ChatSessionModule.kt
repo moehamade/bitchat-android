@@ -139,6 +139,7 @@ object ChatSessionModule {
         channelManager: ChannelManager,
         privateChatManager: PrivateChatManager,
         @ChatSessionScope scope: CoroutineScope,
+        geohashSession: Lazy<GeohashSession>,
     ): CommandProcessor = CommandProcessor(
         state,
         messageManager,
@@ -148,7 +149,8 @@ object ChatSessionModule {
         routePrivateMessage = { mesh, content, peerID, recipientNickname, messageId ->
             MessageRouter.getInstance(context, mesh)
                 .sendPrivate(content, peerID, recipientNickname, messageId)
-        }
+        },
+        geohashPeople = { geohashSession.get().geohashPeople.value },
     )
 
     @Provides

@@ -33,7 +33,7 @@ internal class NostrBackgroundEventProcessor(
         loadGeohashBlockedUsers()
     }
     private val messageManager = MessageManager(state)
-    private val geohashRepository = GeohashRepository(application, state, dataManager)
+    private val geohashRepository = GeohashRepository(application, dataManager) { state.getNicknameValue() }
     private val privateChatManager = PrivateChatManager(
         state = state,
         messageManager = messageManager,

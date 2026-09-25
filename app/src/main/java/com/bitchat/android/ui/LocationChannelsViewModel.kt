@@ -24,7 +24,7 @@ class LocationChannelsViewModel @Inject constructor(
 ) : ViewModel() {
 
     /** Participants seen per geohash while sampling. */
-    val geohashParticipantCounts: StateFlow<Map<String, Int>> = state.geohashParticipantCounts
+    val geohashParticipantCounts: StateFlow<Map<String, Int>> = geohashSession.geohashParticipantCounts
 
     /** People on the mesh, not counting this device. */
     val meshPeopleCount: StateFlow<Int> = state.connectedPeers

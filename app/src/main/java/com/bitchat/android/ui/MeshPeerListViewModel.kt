@@ -47,9 +47,9 @@ class MeshPeerListViewModel @Inject constructor(
     val peerFingerprints: StateFlow<Map<String, String>> = state.peerFingerprints
     val privateChats: StateFlow<Map<String, List<BitchatMessage>>> = state.privateChats
     val selectedLocationChannel: StateFlow<ChannelID?> = state.selectedLocationChannel
-    val geohashPeople: StateFlow<List<GeoPerson>> = state.geohashPeople
+    val geohashPeople: StateFlow<List<GeoPerson>> = geohashSession.geohashPeople
     val isTeleported: StateFlow<Boolean> = state.isTeleported
-    val teleportedGeo: StateFlow<Set<String>> = state.teleportedGeo
+    val teleportedGeo: StateFlow<Set<String>> = geohashSession.teleportedGeo
     val verifiedFingerprints: StateFlow<Set<String>> = verificationHandler.verifiedFingerprints
     internal val conversations: StateFlow<List<ConversationSummary>> =
         conversationDirectory.conversations

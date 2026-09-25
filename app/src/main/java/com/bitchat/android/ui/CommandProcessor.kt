@@ -24,6 +24,8 @@ class CommandProcessor(
     // through MessageRouter, which can fall back to Nostr; left null, it goes
     // straight to the mesh, which is what the unit tests exercise.
     private val routePrivateMessage: RoutePrivateMessage? = null,
+    // Who is in the current geohash, for /w and mention suggestions there.
+    private val geohashPeople: () -> List<GeoPerson> = { emptyList() },
 ) {
     
     // Available commands list
@@ -157,7 +159,7 @@ class CommandProcessor(
                 
                 is com.bitchat.android.geohash.ChannelID.Location -> {
                     // Location channel: show geohash participants
-                    val geohashPeople = state.geohashPeople.value
+                    val geohashPeople = geohashPeople()
                     val currentNickname = state.getNicknameValue()
                     
                     val participantList = geohashPeople.mapNotNull { person ->
@@ -566,7 +568,7 @@ class CommandProcessor(
                 
                 is com.bitchat.android.geohash.ChannelID.Location -> {
                     // Location channel: use geohash participants with collision-resistant suffixes
-                    val geohashPeople = state.geohashPeople.value
+                    val geohashPeople = geohashPeople()
                     val currentNickname = state.getNicknameValue()
                     val duplicateNames = duplicateGeohashBaseNames(geohashPeople)
                     

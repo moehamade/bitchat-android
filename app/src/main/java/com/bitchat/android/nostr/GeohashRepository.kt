@@ -2,9 +2,11 @@ package com.bitchat.android.nostr
 
 import android.app.Application
 import android.util.Log
-import com.bitchat.android.ui.ChatState
 import com.bitchat.android.ui.GeoPerson
 import java.util.Date
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * GeohashRepository
@@ -13,10 +15,25 @@ import java.util.Date
  */
 class GeohashRepository(
     private val application: Application,
-    private val state: ChatState,
-    private val dataManager: com.bitchat.android.ui.DataManager
+    private val dataManager: com.bitchat.android.ui.DataManager,
+    /** This device's nickname, shown for our own entry in a geohash. */
+    private val nickname: () -> String,
 ) {
     companion object { private const val TAG = "GeohashRepository" }
+
+    // What the geohash UI shows. Set from background threads as events arrive.
+    private val _geohashPeople = MutableStateFlow<List<GeoPerson>>(emptyList())
+    /** People active in the current geohash in the last five minutes, newest first. */
+    val geohashPeople: StateFlow<List<GeoPerson>> = _geohashPeople.asStateFlow()
+
+    private val _teleportedGeo = MutableStateFlow<Set<String>>(emptySet())
+    /** Lowercased pubkeys of people who teleported into a geohash rather than being there. */
+    val teleportedGeo: StateFlow<Set<String>> = _teleportedGeo.asStateFlow()
+
+    private val _geohashParticipantCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    /** Active participants per geohash. */
+    val geohashParticipantCounts: StateFlow<Map<String, Int>> =
+        _geohashParticipantCounts.asStateFlow()
 
     // geohash -> (participant pubkeyHex -> lastSeen)
     private val geohashParticipants: MutableMap<String, MutableMap<String, Date>> = mutableMapOf()
@@ -75,9 +92,9 @@ class GeohashRepository(
         geohashParticipants.clear()
         geoNicknames.clear()
         nostrKeyMapping.clear()
-        state.setGeohashPeople(emptyList())
-        state.setTeleportedGeo(emptySet())
-        state.setGeohashParticipantCounts(emptyMap())
+        _geohashPeople.value = emptyList()
+        _teleportedGeo.value = emptySet()
+        _geohashParticipantCounts.value = emptyMap()
         currentGeohash = null
     }
 
@@ -96,18 +113,18 @@ class GeohashRepository(
 
     @Synchronized
     fun markTeleported(pubkeyHex: String) {
-        val set = state.getTeleportedGeoValue().toMutableSet()
+        val set = _teleportedGeo.value.toMutableSet()
         val key = pubkeyHex.lowercase()
         if (!set.contains(key)) {
             set.add(key)
             // Background safe update
-            state.postTeleportedGeo(set)
+            _teleportedGeo.value = set
         }
     }
 
     @Synchronized
     fun isPersonTeleported(pubkeyHex: String): Boolean {
-        return state.getTeleportedGeoValue().contains(pubkeyHex.lowercase())
+        return _teleportedGeo.value.contains(pubkeyHex.lowercase())
     }
 
     @Synchronized
@@ -146,7 +163,7 @@ class GeohashRepository(
         val geohash = currentGeohash
         if (geohash == null) {
             // Use postValue for thread safety - this can be called from background threads
-            state.setGeohashPeople(emptyList())
+            _geohashPeople.value = emptyList()
             return
         }
         val cutoff = Date(System.currentTimeMillis() - 5 * 60 * 1000)
@@ -165,7 +182,7 @@ class GeohashRepository(
             val base = try {
                 val myHex = currentGeohash?.let { NostrIdentityBridge.deriveIdentity(it, application).publicKeyHex }
                 if (myHex != null && myHex.equals(pubkeyHex, true)) {
-                    state.getNicknameValue() ?: "anon"
+                    nickname()
                 } else {
                     getCachedNickname(pubkeyHex) ?: "anon"
                 }
@@ -177,7 +194,7 @@ class GeohashRepository(
             )
         }.sortedByDescending { it.lastSeen }
         // Use postValue for thread safety - this can be called from background threads
-        state.setGeohashPeople(people)
+        _geohashPeople.value = people
     }
 
     @Synchronized
@@ -190,7 +207,7 @@ class GeohashRepository(
             counts[gh] = active
         }
         // Use postValue for thread safety - this can be called from background threads  
-        state.setGeohashParticipantCounts(counts)
+        _geohashParticipantCounts.value = counts
     }
 
     @Synchronized
@@ -211,7 +228,7 @@ class GeohashRepository(
             try {
                 val my = NostrIdentityBridge.deriveIdentity(current, application)
                 if (my.publicKeyHex.equals(lower, true)) {
-                    return "${state.getNicknameValue()}#$suffix"
+                    return "${nickname()}#$suffix"
                 }
             } catch (_: Exception) {}
         }
@@ -228,7 +245,7 @@ class GeohashRepository(
             if (current != null) {
                 val my = NostrIdentityBridge.deriveIdentity(current, application)
                 if (my.publicKeyHex.equals(lower, true)) {
-                    state.getNicknameValue() ?: "anon"
+                    nickname()
                 } else geoNicknames[lower] ?: "anon"
             } else geoNicknames[lower] ?: "anon"
         } catch (_: Exception) { geoNicknames[lower] ?: "anon" }

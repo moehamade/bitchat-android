@@ -53,7 +53,7 @@ class GeohashSession(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val repo = GeohashRepository(application, state, dataManager)
+    private val repo = GeohashRepository(application, dataManager) { state.getNicknameValue() }
     private val uiSubscriptionOwner = "geohash-ui-${UUID.randomUUID()}"
     private val subscriptionManager = NostrSubscriptionManager(
         application,
@@ -90,8 +90,9 @@ class GeohashSession(
     // Geohash of the currently selected Location channel (null for Mesh/none).
     private var activeChannelGeohash: String? = null
 
-    val geohashPeople: StateFlow<List<GeoPerson>> = state.geohashPeople
-    val geohashParticipantCounts: StateFlow<Map<String, Int>> = state.geohashParticipantCounts
+    val geohashPeople: StateFlow<List<GeoPerson>> = repo.geohashPeople
+    val teleportedGeo: StateFlow<Set<String>> = repo.teleportedGeo
+    val geohashParticipantCounts: StateFlow<Map<String, Int>> = repo.geohashParticipantCounts
     val selectedLocationChannel: StateFlow<com.bitchat.android.geohash.ChannelID?> = state.selectedLocationChannel
 
     init {

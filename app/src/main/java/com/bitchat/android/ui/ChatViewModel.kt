@@ -71,7 +71,7 @@ class ChatViewModel @Inject constructor(
         nickname = state.nickname.value,
         connectedPeers = state.connectedPeers.value,
         peerNicknames = state.peerNicknames.value,
-        geohashPeople = state.geohashPeople.value,
+        geohashPeople = geohashSession.geohashPeople.value,
     )
 
     private fun headerNow() = headerStateOf(
@@ -82,7 +82,7 @@ class ChatViewModel @Inject constructor(
         unreadPrivateMessages = state.unreadPrivateMessages.value,
         isConnected = state.isConnected.value,
         selectedLocationChannel = state.selectedLocationChannel.value,
-        geohashPeople = state.geohashPeople.value,
+        geohashPeople = geohashSession.geohashPeople.value,
     )
 
     private fun composerNow() = ComposerState(
@@ -106,7 +106,7 @@ class ChatViewModel @Inject constructor(
             listOf(
                 state.messages, state.channelMessages, state.currentChannel,
                 state.selectedPrivateChatPeer, state.selectedLocationChannel, state.nickname,
-                state.connectedPeers, state.peerNicknames, state.geohashPeople,
+                state.connectedPeers, state.peerNicknames, geohashSession.geohashPeople,
             ),
             ::timelineNow,
         ),
@@ -114,7 +114,7 @@ class ChatViewModel @Inject constructor(
             listOf(
                 state.connectedPeers, state.joinedChannels, state.unreadChannelMessages,
                 state.unreadPrivateMessages, state.isConnected, state.selectedLocationChannel,
-                state.geohashPeople,
+                geohashSession.geohashPeople,
             ),
             ::headerNow,
         ),
