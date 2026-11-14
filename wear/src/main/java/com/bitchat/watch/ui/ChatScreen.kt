@@ -21,7 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -30,8 +30,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.foundation.rotary.rotaryScrollable
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.items
@@ -42,32 +44,41 @@ import androidx.wear.compose.material3.Text
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.services.AppStateStore
-import com.bitchat.watch.mesh.WearMeshService
+import com.bitchat.watch.mesh.WearMeshHolder
 import com.bitchat.watch.ui.media.FileMessageChip
 import com.bitchat.watch.ui.media.FullScreenImageViewer
 import com.bitchat.watch.ui.media.ImageMessageItem
 import com.bitchat.watch.ui.media.VoiceNoteItem
-import com.bitchat.watch.ui.theme.BitchatMotion
+import com.bitchat.android.ui.peerIdentityForMessage
+import com.bitchat.android.ui.theme.BitchatMotion
+import com.bitchat.android.ui.theme.BitchatPalette
 import com.bitchat.watch.ui.theme.ChatVisualTokens
-import com.bitchat.watch.ui.theme.LocalBitchatPalette
-import com.bitchat.watch.ui.theme.colorForPeer
+import com.bitchat.android.ui.theme.LocalBitchatPalette
+import com.bitchat.android.ui.theme.colorForPeer
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 @Composable
-fun ChatScreen(onOpenPeople: () -> Unit, onOpenTextInput: () -> Unit) {
+fun ChatScreen(
+    appStateStore: AppStateStore,
+    chatState: WearChatState,
+    meshHolder: WearMeshHolder,
+    liveVoiceManager: com.bitchat.android.features.voice.LiveVoiceManager,
+    voiceWaveformCache: com.bitchat.android.features.voice.VoiceWaveformCache,
+    active: Boolean = true,
+    onOpenPeople: () -> Unit,
+    onOpenTextInput: () -> Unit,
+    onHorizontalGestureActive: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
-    val messages by AppStateStore.publicMessages.collectAsState()
-    val peers by AppStateStore.peers.collectAsState()
-    val unreadDms by WearChatState.unreadDms.collectAsState()
-    val mesh = WearMeshService.peek()
+    val messages by appStateStore.publicMessages.collectAsState()
+    val peers by appStateStore.peers.collectAsState()
+    val unreadDms by chatState.unreadDms.collectAsState()
+    val mesh = meshHolder.peek()
     val myPeerID = mesh?.myPeerID ?: ""
     var viewerPath by remember { mutableStateOf<String?>(null) }
-    val liveVoiceManager = remember(context) {
-        com.bitchat.android.features.voice.LiveVoiceManager.getInstance(context)
-    }
     val busyTalker by liveVoiceManager.activePublicTalker.collectAsState()
     val voice = rememberVoiceNoteController(
         recorderFactory = {
@@ -80,11 +91,20 @@ fun ChatScreen(onOpenPeople: () -> Unit, onOpenTextInput: () -> Unit) {
             } else null
             com.bitchat.android.features.voice.VoiceRecorder(context, target)
         }
-    ) { path -> mesh?.let { sendVoiceNote(it, null, path) } }
+    ) { path -> mesh?.let { sendVoiceNote(appStateStore, it, it.nickname, null, path, it::sendFilePrivateEncrypted) } }
 
-    androidx.compose.runtime.DisposableEffect(liveVoiceManager) {
-        liveVoiceManager.showPublicMesh()
-        onDispose { liveVoiceManager.clearVisibleConversation() }
+    // Push-to-talk drags and the image viewer own the whole screen; the home pager must not
+    // turn them into a page swipe.
+    val horizontalGestureActive = voice.recording || viewerPath != null
+    LaunchedEffect(horizontalGestureActive) { onHorizontalGestureActive(horizontalGestureActive) }
+
+    // Only the foreground copy claims the conversation; a copy revealed behind a swipe must
+    // not clear the screen it is revealed from when the swipe is cancelled.
+    if (active) {
+        androidx.compose.runtime.DisposableEffect(liveVoiceManager) {
+            liveVoiceManager.showPublicMesh()
+            onDispose { liveVoiceManager.clearVisibleConversation() }
+        }
     }
 
     ChatScaffold(
@@ -92,6 +112,8 @@ fun ChatScreen(onOpenPeople: () -> Unit, onOpenTextInput: () -> Unit) {
         myPeerID = myPeerID,
         emptyText = "No messages yet\nSay hi to the mesh",
         voice = voice,
+        liveVoiceManager = liveVoiceManager,
+        voiceWaveformCache = voiceWaveformCache,
         onOpenImage = { viewerPath = it },
         header = { expanded ->
             ChatHeader(
@@ -161,7 +183,7 @@ private fun ChatHeader(
         }
         Icon(
             imageVector = Icons.Filled.People,
-            contentDescription = "people",
+            contentDescription = "People",
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(iconSize),
         )
@@ -177,7 +199,7 @@ private fun ChatHeader(
         if (unreadDms > 0) {
             Icon(
                 imageVector = Icons.Filled.MailOutline,
-                contentDescription = "$unreadDms unread messages",
+                contentDescription = unreadDescription(unreadDms),
                 tint = LocalBitchatPalette.current.accentOrange,
                 modifier = Modifier.padding(start = 6.dp).size(iconSize),
             )
@@ -194,22 +216,37 @@ private fun ChatHeader(
     }
 }
 
+/**
+ * The sender's name color: orange for this watch, otherwise the peer's identity color, keyed the
+ * same way as on the phone and iOS so a nickname change never recolors a peer.
+ */
+internal fun messageSenderColor(
+    message: BitchatMessage,
+    myPeerID: String,
+    palette: BitchatPalette,
+): Color =
+    if (message.senderPeerID == myPeerID) {
+        palette.accentOrange
+    } else {
+        colorForPeer(peerIdentityForMessage(message).stableKey, palette)
+    }
+
 @Composable
 fun MessageItem(
     message: BitchatMessage,
     myPeerID: String,
+    liveVoiceManager: com.bitchat.android.features.voice.LiveVoiceManager,
+    voiceWaveformCache: com.bitchat.android.features.voice.VoiceWaveformCache,
     onOpenImage: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    animateAppear: Boolean = true
 ) {
     val palette = LocalBitchatPalette.current
     val isSelf = message.senderPeerID == myPeerID
-    val senderColor = when {
-        isSelf -> palette.accentOrange
-        else -> colorForPeer(message.sender + (message.senderPeerID ?: ""), palette)
-    }
+    val senderColor = messageSenderColor(message, myPeerID, palette)
 
-    // Snappy appear animation for incoming messages (BitchatMotion.EMPHASIZED_MS)
-    var appeared by remember { mutableStateOf(false) }
+    // Snappy appear animation for new messages (BitchatMotion.EMPHASIZED_MS)
+    var appeared by remember { mutableStateOf(!animateAppear) }
     LaunchedEffect(message.id) { appeared = true }
     val alpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (appeared) 1f else 0f,
@@ -226,8 +263,10 @@ fun MessageItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 3.dp)
-            .offset(y = offset)
-            .alpha(alpha)
+            // Lambda overloads read the animation in layout/draw only, so an arriving message
+            // no longer recomposes its row on every frame.
+            .offset { IntOffset(0, offset.roundToPx()) }
+            .graphicsLayer { this.alpha = alpha }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -251,6 +290,8 @@ fun MessageItem(
             )
             BitchatMessageType.Audio -> VoiceNoteItem(
                 path = message.content.trim(),
+                liveVoiceManager = liveVoiceManager,
+                voiceWaveformCache = voiceWaveformCache,
                 messageID = message.id
             )
             BitchatMessageType.File -> {
@@ -268,6 +309,9 @@ fun MessageItem(
         }
     }
 }
+
+internal fun unreadDescription(count: Int): String =
+    if (count == 1) "1 unread message" else "$count unread messages"
 
 private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
