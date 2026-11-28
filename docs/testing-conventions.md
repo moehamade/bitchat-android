@@ -12,7 +12,7 @@ and portable across implementations.
 | JVM unit and contract tests | `app/src/test/` | `*Test.kt` |
 | Shared deterministic fakes and fixtures | `app/src/test/**/testsupport/` | Descriptive fixture name |
 | Robolectric tests | `app/src/test/` | `*RobolectricTest.kt` |
-| Android instrumented tests | `app/src/androidTest/` | `*InstrumentedTest.kt` |
+| Android instrumented tests | `app/src/androidTest/`; a test that needs none of the app's startup goes in its module's `src/androidTest/` (e.g. `feature/chat/`), whose self-contained test APK runs under a plain Application | `*InstrumentedTest.kt` |
 | Coverage-tool tests | `tools/coverage/` | `test_*.py` |
 | Interoperability fixtures | `app/src/test/resources/contracts/` | Protocol and version in filename |
 
@@ -33,6 +33,17 @@ and portable across implementations.
 - Asynchronous tests must have a deterministic completion condition and a
   bounded timeout.
 - A fixed bug must retain its smallest reproducing input as a regression test.
+
+## Device readiness in instrumented tests
+
+Instrumented tests never read the device's own Bluetooth, location services,
+battery optimization or permission state. `ReadinessOverride`
+(`app/src/debug/`, debug builds only) replaces the readiness snapshot whole and
+lets a test send radio changes with `emit`. Set it before the Activity launches
+and `clear()` it when the test ends. The release source set binds the system
+readiness directly, so the override never reaches a release build; neither
+`app/src/main/` nor `app/src/release/` may reference it. Onboarding's step logic
+is covered on the JVM in `:feature:onboarding` with fakes.
 
 ## Naming
 
@@ -88,3 +99,9 @@ bridges, and vendored Noise code are excluded from first-party coverage metrics.
 - A temporary quarantine must include an issue and removal condition.
 - Unexpected skips fail review. Existing skips must be restored or replaced by
   equivalent coverage.
+
+## Composer UI regression
+
+The [composer panic regression](composer-panic-test.md) runs locally in a
+disposable emulator with a separate installation and blocked external egress.
+This destructive UI suite is opt-in; default JVM and CI commands do not execute it.

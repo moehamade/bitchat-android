@@ -17,15 +17,64 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.bitchat.android.MainActivity
 import com.bitchat.android.R
+import com.bitchat.android.identity.scope.CurrentIdentity
+import com.bitchat.android.identity.scope.IdentityHolder
 import com.bitchat.android.mesh.BluetoothMeshService
+import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.services.MessageRouterHolder
+import com.bitchat.android.wifiaware.WifiAwareController
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Inject
+import javax.inject.Provider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 class MeshForegroundService : Service() {
+
+    @Inject
+    lateinit var shutdownCoordinator: AppShutdownCoordinator
+
+    @Inject
+    lateinit var meshServicePreferences: MeshServicePreferences
+
+    @Inject
+    lateinit var identityHolder: IdentityHolder
+
+    // Providers, asked when used, so the service keeps nothing of the identity's.
+    @Inject
+    @CurrentIdentity
+    lateinit var meshServiceHolderProvider: Provider<MeshServiceHolder>
+    private val meshServiceHolder: MeshServiceHolder get() = meshServiceHolderProvider.get()
+
+    @Inject
+    @CurrentIdentity
+    lateinit var wifiAwareControllerProvider: Provider<WifiAwareController>
+    private val wifiAwareController: WifiAwareController get() = wifiAwareControllerProvider.get()
+
+    @Inject
+    @CurrentIdentity
+    lateinit var messageRouterHolder: Provider<MessageRouterHolder>
+
+    @Inject
+    @CurrentIdentity
+    lateinit var appStateStore: Provider<AppStateStore>
+
+    /** [start] runs with no service instance, so it reaches the preference store through this. */
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface StartDependencies {
+        fun meshServicePreferences(): MeshServicePreferences
+    }
 
     companion object {
         private const val CHANNEL_ID = "bitchat_mesh_service"
@@ -36,26 +85,49 @@ class MeshForegroundService : Service() {
         const val ACTION_QUIT = "com.bitchat.android.service.QUIT"
         const val ACTION_UPDATE_NOTIFICATION = "com.bitchat.android.service.UPDATE_NOTIFICATION"
 
-        fun start(context: Context) {
+        /** Returns true when the service start request was accepted. */
+        fun start(context: Context): Boolean = start(
+            context,
+            EntryPointAccessors
+                .fromApplication(context.applicationContext, StartDependencies::class.java)
+                .meshServicePreferences(),
+        )
+
+        internal fun start(context: Context, preferences: MeshServicePreferences): Boolean {
             val intent = Intent(context, MeshForegroundService::class.java).apply { action = ACTION_START }
 
             // Only launch as an FGS when onStartCommand can promote immediately.
-            val shouldStartForeground = shouldStartAsForeground(context)
+            val shouldStartForeground = shouldStartAsForeground(context, preferences)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (shouldStartForeground) {
-                    context.startForegroundService(intent)
+                    try {
+                        context.startForegroundService(intent)
+                        true
+                    } catch (_: IllegalStateException) {
+                        // Boot/background starts can be denied even with permissions.
+                        // A later user-visible start can retry; never fall back to an
+                        // illegal background service or crash the receiver/activity.
+                        Log.i("MeshForegroundService", "Foreground service start deferred by system")
+                        false
+                    } catch (_: SecurityException) {
+                        Log.i("MeshForegroundService", "Foreground service permission no longer available")
+                        false
+                    }
                 } else {
                     android.util.Log.i(
                         "MeshForegroundService",
                         "Not starting service on API>=26 (shouldStartForeground=$shouldStartForeground)"
                     )
+                    false
                 }
             } else {
-                if (MeshServicePreferences.isBackgroundEnabled(true)) {
+                if (preferences.isBackgroundEnabled(true)) {
                     context.startService(intent)
+                    true
                 } else {
                     android.util.Log.i("MeshForegroundService", "Background disabled; not starting service (pre-O)")
+                    false
                 }
             }
         }
@@ -65,8 +137,8 @@ class MeshForegroundService : Service() {
             context.startService(intent)
         }
 
-        private fun shouldStartAsForeground(context: Context): Boolean {
-            return MeshServicePreferences.isBackgroundEnabled(true) &&
+        private fun shouldStartAsForeground(context: Context, preferences: MeshServicePreferences): Boolean {
+            return preferences.isBackgroundEnabled(true) &&
                     hasBluetoothPermissionsStatic(context)
         }
 
@@ -88,9 +160,9 @@ class MeshForegroundService : Service() {
     private lateinit var peerAvailabilityNotifier: PeerAvailabilityNotifier
     private var updateJob: Job? = null
     private val meshService: BluetoothMeshService?
-        get() = MeshServiceHolder.meshService
+        get() = meshServiceHolder.meshService
     private val unifiedMeshService: com.bitchat.android.mesh.MeshService?
-        get() = MeshServiceHolder.unifiedMeshService
+        get() = meshServiceHolder.unifiedMeshService
     private val serviceJob = Job()
     // Service lifecycle callbacks and notification state are main-thread confined.
     private val scope = CoroutineScope(Dispatchers.Main.immediate + serviceJob)
@@ -113,38 +185,30 @@ class MeshForegroundService : Service() {
         )
         createChannel()
 
-        // Ensure mesh service exists in holder (create if needed)
-        val existing = MeshServiceHolder.meshService
-        if (existing != null) {
-            Log.d("MeshForegroundService", "Using existing BluetoothMeshService from holder")
-        } else {
-            val created = MeshServiceHolder.getOrCreate(applicationContext)
-            Log.i("MeshForegroundService", "Created new BluetoothMeshService via holder")
-            MeshServiceHolder.attach(created)
-        }
-        MeshServiceHolder.getUnifiedOrCreate(applicationContext)
-
         // Notification content is driven by peer-state changes, not a permanent timer.
+        // The service outlives an identity, so it follows the store of each one.
         updateJob = scope.launch {
-            com.bitchat.android.services.AppStateStore.peers
-                .map { peers -> peers.distinct().size }
-                .distinctUntilChanged()
-                .collect { peerCount ->
-                    peerAvailabilityNotifier.onPeerCountChanged(
-                        peerCount = peerCount,
-                        isAppInBackground = !ProcessLifecycleOwner.get()
-                            .lifecycle
-                            .currentState
-                            .isAtLeast(Lifecycle.State.STARTED)
-                    )
-                    if (isInForeground) updateNotification(force = false)
-                }
+            identityHolder.generation.collectLatest {
+                appStateStore.get().peers
+                    .map { peers -> peers.distinct().size }
+                    .distinctUntilChanged()
+                    .collect { peerCount ->
+                        peerAvailabilityNotifier.onPeerCountChanged(
+                            peerCount = peerCount,
+                            isAppInBackground = !ProcessLifecycleOwner.get()
+                                .lifecycle
+                                .currentState
+                                .isAtLeast(Lifecycle.State.STARTED)
+                        )
+                        if (isInForeground) updateNotification(force = false)
+                    }
+            }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (isShuttingDown && intent?.action == ACTION_START) {
-            AppShutdownCoordinator.cancelPendingShutdown()
+            shutdownCoordinator.cancelPendingShutdown()
             isShuttingDown = false
         }
         if (isShuttingDown && intent?.action != ACTION_QUIT) {
@@ -155,9 +219,9 @@ class MeshForegroundService : Service() {
                 // Stop FGS and mesh cleanly
                 updateJob?.cancel()
                 updateJob = null
-                try { com.bitchat.android.services.MessageRouter.tryGetInstance()?.stopOutboxScheduler() } catch (_: Exception) { }
+                try { messageRouterHolder.get().peek()?.stopOutboxScheduler() } catch (_: Exception) { }
                 try { unifiedMeshService?.stopServices() ?: meshService?.stopServices() } catch (_: Exception) { }
-                try { MeshServiceHolder.clear() } catch (_: Exception) { }
+                try { meshServiceHolder.clear() } catch (_: Exception) { }
                 try { stopForeground(true) } catch (_: Exception) { }
                 clearMeshNotifications()
                 isInForeground = false
@@ -172,7 +236,7 @@ class MeshForegroundService : Service() {
                 clearMeshNotifications()
                 isInForeground = false
                 // Fully stop all background activity, stop Tor (without changing setting), then kill the app
-                AppShutdownCoordinator.requestFullShutdownAndKill(
+                shutdownCoordinator.requestFullShutdownAndKill(
                     app = application,
                     mesh = unifiedMeshService,
                     notificationManager = notificationManager,
@@ -185,48 +249,55 @@ class MeshForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_UPDATE_NOTIFICATION -> {
-                // If we became eligible and are not in foreground yet, promote once
-                if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions() && !isInForeground) {
-                    val count = getUnifiedActivePeerCount()
-                    val n = buildNotification(count)
-                    startForegroundCompat(n)
-                    isInForeground = true
-                    lastNotifiedPeerCount = count
-                } else {
+                if (isInForeground) {
                     updateNotification(force = true)
                 }
             }
             else -> { /* ACTION_START or null */ }
         }
 
-        // Ensure mesh is running (only after permissions are granted)
-        ensureMeshStarted()
-
-        // Promote exactly once when eligible, otherwise stay background (or stop).
-        // POST_NOTIFICATIONS is intentionally not an eligibility requirement: Android 13+
-        // still allows foreground services and exposes them in the system task manager.
-        if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions() && !isInForeground) {
+        // ACTION_START comes from startForegroundService() on supported Android versions.
+        // Android still expects promotion if the background preference changed during dispatch.
+        val foregroundLaunch = intent?.action == ACTION_START
+        // Promote before constructing transports, loading identity storage, or starting
+        // mesh work. Android's foreground deadline includes time spent in onCreate().
+        if (!isInForeground && (foregroundLaunch || canRunInBackground())) {
             val count = getUnifiedActivePeerCount()
             val notification = buildNotification(count)
-            startForegroundCompat(notification)
+            if (!startForegroundCompat(notification)) {
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
             isInForeground = true
             lastNotifiedPeerCount = count
         }
 
+        if (!isInForeground || !canRunInBackground()) {
+            if (isInForeground) stopForeground(true)
+            isInForeground = false
+            clearMeshNotifications()
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        ensureMeshStarted()
         return START_STICKY
     }
+
+    private fun canRunInBackground(): Boolean =
+        meshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions()
 
     private fun ensureMeshStarted() {
         if (isShuttingDown) return
         try {
-            com.bitchat.android.wifiaware.WifiAwareController.startIfPossible()
+            wifiAwareController.startIfPossible()
         } catch (e: Exception) {
             android.util.Log.e("MeshForegroundService", "Failed to ensure Wi-Fi Aware transport: ${e.message}")
         }
 
         try {
             android.util.Log.d("MeshForegroundService", "Ensuring mesh service is started")
-            val service = MeshServiceHolder.getUnifiedOrCreate(applicationContext)
+            val service = meshServiceHolder.getUnifiedOrCreate(applicationContext)
             service.startServices()
         } catch (e: Exception) {
             android.util.Log.e("MeshForegroundService", "Failed to start mesh service: ${e.message}")
@@ -239,7 +310,7 @@ class MeshForegroundService : Service() {
             return
         }
         val count = getUnifiedActivePeerCount()
-        if (MeshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions()) {
+        if (meshServicePreferences.isBackgroundEnabled(true) && hasAllRequiredPermissions()) {
             if (lastNotifiedPeerCount != count) {
                 startForegroundCompat(buildNotification(count))
                 lastNotifiedPeerCount = count
@@ -343,7 +414,7 @@ class MeshForegroundService : Service() {
         return fine || coarse
     }
 
-    private fun startForegroundCompat(notification: Notification) {
+    private fun startForegroundCompat(notification: Notification): Boolean = try {
         if (Build.VERSION.SDK_INT >= 34) {
             val type = if (hasLocationPermission()) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -355,8 +426,8 @@ class MeshForegroundService : Service() {
             } catch (e: SecurityException) {
                 // Fallback for cases where "While In Use" permission exists but background start is restricted
                 if (type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0) {
-                     android.util.Log.w("MeshForegroundService", "Failed to start with LOCATION type, falling back to CONNECTED_DEVICE: ${e.message}")
-                     startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                    Log.i("MeshForegroundService", "Location foreground type unavailable; trying connected device")
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
                 } else {
                     throw e
                 }
@@ -364,6 +435,13 @@ class MeshForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        true
+    } catch (_: SecurityException) {
+        Log.i("MeshForegroundService", "Foreground promotion permission no longer available")
+        false
+    } catch (_: IllegalStateException) {
+        Log.i("MeshForegroundService", "Foreground promotion deferred by system")
+        false
     }
 
     override fun onDestroy() {

@@ -50,9 +50,9 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.watch.ui.theme.BitchatMotion
+import com.bitchat.android.ui.theme.BitchatMotion
 import com.bitchat.watch.ui.theme.ChatVisualTokens
-import com.bitchat.watch.ui.theme.LocalBitchatPalette
+import com.bitchat.android.ui.theme.LocalBitchatPalette
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -74,6 +74,8 @@ fun ChatScaffold(
     myPeerID: String,
     emptyText: String,
     voice: VoiceNoteController,
+    liveVoiceManager: com.bitchat.android.features.voice.LiveVoiceManager,
+    voiceWaveformCache: com.bitchat.android.features.voice.VoiceWaveformCache,
     onOpenImage: (String) -> Unit,
     header: @Composable (expanded: Boolean) -> Unit,
     actionBar: @Composable () -> Unit
@@ -163,6 +165,8 @@ fun ChatScaffold(
         myPeerID = myPeerID,
         emptyText = emptyText,
         voice = voice,
+        liveVoiceManager = liveVoiceManager,
+        voiceWaveformCache = voiceWaveformCache,
         onOpenImage = onOpenImage,
         columnState = columnState,
         controlsVisible = scrollIntent.controlsVisible,
@@ -233,6 +237,8 @@ private fun ChatBody(
     myPeerID: String,
     emptyText: String,
     voice: VoiceNoteController,
+    liveVoiceManager: com.bitchat.android.features.voice.LiveVoiceManager,
+    voiceWaveformCache: com.bitchat.android.features.voice.VoiceWaveformCache,
     onOpenImage: (String) -> Unit,
     columnState: TransformingLazyColumnState,
     controlsVisible: Boolean,
@@ -273,6 +279,10 @@ private fun ChatBody(
         proximity = 0f
         magnetPull = Offset.Zero
     }
+
+    // Only messages that arrive while the thread is open animate in. Rows scrolled back into
+    // view are recomposed from scratch by the lazy list and must not replay their entrance.
+    val knownMessageIDs = remember { messages.mapTo(HashSet()) { it.id } }
 
     // Tactile tick each time the finger enters or leaves the cancel target.
     var hoverHapticState by remember { mutableStateOf(false) }
@@ -317,7 +327,8 @@ private fun ChatBody(
                 }
             }
     ) {
-        ScreenScaffold(scrollState = columnState) { scaffoldPadding ->
+        // The chat header owns the top of the display, so the app-wide TimeText stays hidden.
+        ScreenScaffold(scrollState = columnState, timeText = {}) { scaffoldPadding ->
             val layoutDirection = LocalLayoutDirection.current
             TransformingLazyColumn(
                 state = columnState,
@@ -391,10 +402,14 @@ private fun ChatBody(
                     }
                 }
                 items(messages, key = { it.id }) { message ->
+                    val animateAppear = remember(message.id) { knownMessageIDs.add(message.id) }
                     MessageItem(
                         message = message,
                         myPeerID = myPeerID,
+                        liveVoiceManager = liveVoiceManager,
+                        voiceWaveformCache = voiceWaveformCache,
                         onOpenImage = onOpenImage,
+                        animateAppear = animateAppear,
                         modifier = Modifier
                             .transformedHeight(this, transformationSpec)
                             .graphicsLayer {
@@ -451,7 +466,7 @@ private const val CANCEL_HOVER_SLANT_PX = 56f
 private val CHAT_ACTION_BAR_CLEARANCE = 64.dp
 private val CHAT_HEADER_EDGE_FADE = 36.dp
 private val CHAT_ACTION_BAR_EDGE_FADE = 72.dp
-private const val CHAT_ROUND_EDGE_OPAQUE_STOP = 0.78f
+private const val CHAT_ROUND_EDGE_OPAQUE_STOP = 0.86f
 // Magnetic zone geometry (px at watch density): the button starts reacting at
 // MAGNET_OUTER_PX from its center and fully blushes at MAGNET_INNER_PX (~the activation
 // boundary); it leans toward the finger by up to MAGNET_PULL_PX.

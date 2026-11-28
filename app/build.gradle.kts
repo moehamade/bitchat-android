@@ -4,7 +4,15 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.parcelize)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
+
+// Opt-in instrumentation of the minified variant; production release signing is unchanged.
+val releaseUiTests = providers.gradleProperty("releaseUiTests").orNull == "true"
+val composerUiTests = providers.gradleProperty("composerUiTests").orNull == "true"
+require(!(releaseUiTests && composerUiTests)) { "Select one UI test configuration" }
 
 val githubReleaseCertSha256 = providers
     .environmentVariable("BITCHAT_GITHUB_RELEASE_CERT_SHA256")
@@ -25,20 +33,27 @@ android {
     namespace = "com.bitchat.android"
     compileSdk = libs.versions.compileSdk.get().toInt()
     buildToolsVersion = libs.versions.buildTools.get()
+    if (releaseUiTests) testBuildType = "release"
 
     defaultConfig {
         applicationId = "com.bitchat.droid"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 40
-        versionName = "2.0.3"
+        versionCode = 42
+        versionName = "2.2.0"
         buildConfigField(
             "String",
             "GITHUB_RELEASE_CERT_SHA256",
             "\"$normalizedGithubReleaseCertSha256\""
         )
 
-        testInstrumentationRunner = "com.bitchat.android.ui.PerformanceTestRunner"
+        testInstrumentationRunner = if (composerUiTests) {
+            "com.bitchat.android.ui.ComposerPanicTestRunner"
+        } else if (releaseUiTests) {
+            "com.bitchat.android.ui.ReleaseScannerTestRunner"
+        } else {
+            "androidx.test.runner.AndroidJUnitRunner"
+        }
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -51,14 +66,23 @@ android {
         includeInBundle = false
     }
 
+    if (composerUiTests) {
+        sourceSets.getByName("androidTest").kotlin.directories.add("src/composerAndroidTest/java")
+    }
+
     buildTypes {
         debug {
+            if (composerUiTests) applicationIdSuffix = ".composerTest"
             ndk {
                 // Include x86_64 for emulator support during development
                 abiFilters += listOf("arm64-v8a", "x86_64", "armeabi-v7a", "x86")
             }
         }
         release {
+            if (releaseUiTests) {
+                signingConfig = signingConfigs.getByName("debug")
+                proguardFiles("release-instrumentation.pro")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -118,6 +142,23 @@ composeCompiler {
     includeComposeMappingFile.set(false)
 }
 
+// The architecture scans (NoStaticMeshAccessTest and its neighbours) read every module's sources
+// and build files as text at run time, which Gradle cannot see. Declaring them as inputs makes a
+// source-only change in another module rerun the unit tests instead of leaving a stale green.
+val architectureScanSources = files(
+    listOf("app", "wear", "core", "feature").map { dir ->
+        fileTree(rootDir.resolve(dir)) {
+            include("**/src/**", "**/build.gradle.kts")
+            exclude("**/build", "**/build/**")
+        }
+    }
+)
+tasks.withType<Test>().configureEach {
+    inputs.files(architectureScanSources)
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("architectureScanSources")
+}
+
 kotlin {
     jvmToolchain(21)
     compilerOptions {
@@ -126,6 +167,27 @@ kotlin {
 }
 
 dependencies {
+    // Project modules
+    implementation(project(":core:domain"))
+    implementation(project(":core:navigation"))
+    implementation(project(":core:designsystem"))
+    implementation(project(":core:designsystem:phone"))
+    implementation(project(":core:mesh"))
+    implementation(project(":core:nostr"))
+    implementation(project(":core:chat"))
+    implementation(project(":core:tor"))
+    implementation(project(":core:readiness"))
+    implementation(project(":feature:share"))
+    implementation(project(":feature:share:api"))
+    implementation(project(":feature:chat"))
+    implementation(project(":feature:chat:api"))
+    implementation(project(":feature:location"))
+    implementation(project(":feature:location:api"))
+    implementation(project(":feature:settings"))
+    implementation(project(":feature:settings:api"))
+    implementation(project(":feature:onboarding"))
+    implementation(project(":feature:onboarding:api"))
+
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -141,7 +203,12 @@ dependencies {
     
     // Navigation
     implementation(libs.androidx.navigation.compose)
-    
+
+    // Dependency injection
+    implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.navigation.compose)
+    ksp(libs.hilt.compiler)
+
     // Permissions
     implementation(libs.accompanist.permissions)
 
@@ -169,17 +236,9 @@ dependencies {
     // WebSocket
     implementation(libs.okhttp)
 
-    // WorkManager for background APK downloads
-    implementation(libs.androidx.work.runtime.ktx)
+    // WorkManager and NanoHTTPD for APK sharing live in :feature:share.
 
-    // HTTP Server for hotspot APK sharing
-    implementation(libs.nanohttpd)
-
-    // Arti (Tor in Rust) Android bridge - custom build from latest source
-    // Built with rustls, 16KB page size support, and onio//un service client
-    // Native libraries are in src/tor/jniLibs/ (extracted from arti-custom.aar)
-    // Only included in tor flavor to reduce APK size for standard builds
-    // Note: AAR is kept in libs/ for reference, but libraries loaded from jniLibs/
+    // Arti (Tor in Rust), its native libraries and OkHttpProvider live in :core:tor.
 
     // Google Play Services Location
     implementation(libs.gms.location)
@@ -190,20 +249,22 @@ dependencies {
     // EXIF orientation handling for images
     implementation(libs.androidx.exifinterface)
     
-    // Testing
+    testImplementation(testFixtures(project(":core:mesh")))
     testImplementation(libs.bundles.testing)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.test.runner)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    androidTestImplementation(libs.bundles.compose.testing)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    // Declared explicitly, not for direct use: Compose's ui-test drags in
+    // espresso-core 3.5.0, whose input injection reflects on the long-removed
+    // InputManager.getInstance() and dies on API 35+. 3.7.0 is what the unit
+    // test classpath already resolves. Removing this breaks every device test.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
-}
-
-// Robolectric resolves Android runtime jars itself (outside Gradle dependency resolution).
-// Its legacy repo1 endpoint rejects cold GitHub-hosted runners with HTTP 403.
-tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    systemProperty(
-        "robolectric.dependency.repo.url",
-        "https://repo.maven.apache.org/maven2"
-    )
+    // Declares the empty ComponentActivity that createComposeRule launches. It
+    // has to be in the app under test: added to androidTest it lands in the
+    // test APK, which runs in another process, and every such test fails to
+    // start. Debug only, so release manifests are unchanged.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

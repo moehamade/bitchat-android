@@ -1,5 +1,8 @@
 package com.bitchat.android.wifiaware
 
+import com.bitchat.android.di.IoDispatcher
+import com.bitchat.android.identity.scope.IdentityTeardown
+import kotlinx.coroutines.CoroutineDispatcher
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -12,26 +15,43 @@ import android.system.OsConstants
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
+import androidx.core.content.ContextCompat
 import com.bitchat.android.crypto.EncryptionService
+import com.bitchat.android.favorites.FavoritesPersistenceService
+import com.bitchat.android.features.voice.LiveVoiceManager
 import com.bitchat.android.mesh.DirectLinkAnnouncementPolicy
 import com.bitchat.android.mesh.FragmentingPacketSender
 import com.bitchat.android.mesh.MeshCore
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.mesh.MeshTransport
+import com.bitchat.android.mesh.PeerFingerprintManager
 import com.bitchat.android.mesh.PeerInfo
+import com.bitchat.android.mesh.PowerManager
+import com.bitchat.android.mesh.TransferProgressManager
 import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.RoutedPacket
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.protocol.MessageType
 import com.bitchat.android.protocol.SpecialRecipients
+import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.service.TransportBridgeService
+import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.services.ContactDirectory
+import com.bitchat.android.services.ConversationListPreferences
+import com.bitchat.android.services.SeenMessageStore
+import com.bitchat.android.services.VerificationService
+import com.bitchat.android.services.meshgraph.MeshGraphService
+import com.bitchat.android.spam.SpamFilter
 import com.bitchat.android.sync.GossipSyncManager
+import com.bitchat.android.ui.debug.DebugSettingsManager
 import com.bitchat.android.util.toHexString
+import dagger.Lazy
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import java.io.InterruptedIOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -57,11 +77,34 @@ import java.util.concurrent.atomic.AtomicLong
  * - PeerManager: Peer lifecycle management
  * - FragmentManager: Message fragmentation and reassembly
  * - SecurityManager: Security, duplicate detection, encryption
- * - StoreForwardManager: Offline message caching
  * - MessageHandler: Message type processing and relay logic
  * - PacketProcessor: Incoming packet routing
+ *
+ * Built only by [WifiAwareController], which owns the running instance. Unscoped, because the
+ * controller builds a fresh one for each start it cannot reuse.
  */
-class WifiAwareMeshService(private val context: Context) : MeshService, TransportBridgeService.TransportLayer {
+class WifiAwareMeshService @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val meshServiceHolder: MeshServiceHolder,
+    private val messageRouterHolder: com.bitchat.android.services.MessageRouterHolder,
+    private val wifiAwareController: WifiAwareController,
+    private val appStateStore: AppStateStore,
+    private val transportBridgeService: TransportBridgeService,
+    private val debugSettingsManager: Lazy<DebugSettingsManager>,
+    private val spamFilter: SpamFilter,
+    private val transferProgressManager: TransferProgressManager,
+    private val peerFingerprintManager: PeerFingerprintManager,
+    private val liveVoiceManager: Lazy<LiveVoiceManager>,
+    private val meshGraphService: MeshGraphService,
+    private val favoritesPersistenceService: Lazy<FavoritesPersistenceService>,
+    private val contactDirectory: ContactDirectory,
+    private val verificationService: VerificationService,
+    private val seenMessageStore: Lazy<SeenMessageStore>,
+    conversationListPreferences: ConversationListPreferences,
+    private val powerManager: PowerManager,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher,
+    teardown: IdentityTeardown,
+) : MeshService, TransportBridgeService.TransportLayer {
 
     companion object {
         private const val TAG = "WifiAwareMeshService"
@@ -77,24 +120,41 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         private const val CLIENT_SOCKET_ATTEMPTS = 3
         private const val CLIENT_ROLE_REVERSAL_FAILURES = 3
         private const val ROLE_REVERSAL_PREFIX = "ROLE_SERVER:"
+        private const val RECOVERY_RESTART_DELAY_MS = 500L
+        private const val ATTACH_RETRY_BASE_MS = 3_000L
+        private const val ATTACH_RETRY_MAX_MS = 60_000L
+
+        /**
+         * Delay before re-attaching after [consecutiveFailures] failed attaches in a row.
+         *
+         * A start counts as running until its attach is answered, so the controller's attempt
+         * limit never trips on repeated attach failures. This keeps them off the radio instead.
+         */
+        internal fun attachRetryDelayMs(consecutiveFailures: Int): Long =
+            (ATTACH_RETRY_BASE_MS shl (consecutiveFailures - 1).coerceIn(0, 5))
+                .coerceAtMost(ATTACH_RETRY_MAX_MS)
     }
 
     // Core crypto/services
-    private val encryptionService = EncryptionService(context)
+    private val encryptionService = EncryptionService(context, peerFingerprintManager, favoritesPersistenceService)
 
     // Peer ID must match BluetoothMeshService: first 16 hex chars of identity fingerprint (8 bytes)
     override val myPeerID: String = encryptionService.getIdentityFingerprint().take(16)
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val powerManager = com.bitchat.android.mesh.PowerManager.getInstance(context.applicationContext)
+    private val serviceScope = CoroutineScope(ioDispatcher + SupervisorJob())
     private val wifiTransport = WifiAwareTransport()
     private lateinit var meshCore: MeshCore
     private lateinit var fragmentingSender: FragmentingPacketSender
 
-    // Service-level notification manager for background (no-UI) DMs
+    // Service-level notification manager for background (no-UI) DMs. It ends with the identity rather
+    // than with this mesh: a mesh that never started has no stop to hang it on, and one that stopped
+    // may still have notifications up that an acknowledge must reach.
     private val serviceNotificationManager = com.bitchat.android.ui.NotificationManager(
         context.applicationContext,
-        androidx.core.app.NotificationManagerCompat.from(context.applicationContext)
-    )
+        androidx.core.app.NotificationManagerCompat.from(context.applicationContext),
+        com.bitchat.android.di.AppNotificationTargets,
+        contactDirectory,
+        conversationListPreferences,
+    ).also { teardown.register("WifiAwareMeshService notifications", it::close) }
 
     // Wi-Fi Aware transport
     private val awareManager = context.getSystemService(WifiAwareManager::class.java)
@@ -103,8 +163,11 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     @Volatile private var subscribeSession: SubscribeDiscoverySession? = null
     private val listenerExec = Executors.newCachedThreadPool()
     @Volatile private var isActive = false
+    private val recoveryLock = Any()
     @Volatile private var recoveryInProgress = false
+    private var startRequestedDuringRecovery = false
     private val sessionGeneration = AtomicInteger(0)
+    private val consecutiveAttachFailures = AtomicInteger(0)
 
     // Delegate
     override var delegate: WifiAwareMeshDelegate? = null
@@ -141,14 +204,12 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     init {
         // Ensure BluetoothMeshService is initialized so we share its GossipSyncManager
         // This avoids race conditions and ensures a single gossip source/delegate
-        com.bitchat.android.service.MeshServiceHolder.getOrCreate(context)
-        val shared = com.bitchat.android.service.MeshServiceHolder.sharedGossipSyncManager
+        meshServiceHolder.getOrCreate(context)
+        val shared = meshServiceHolder.sharedGossipSyncManager
         encryptionService.onSessionEstablished = { peerID ->
             Log.d(TAG, "Wi-Fi Aware Noise session established with ${peerID.take(8)}")
             try {
-                com.bitchat.android.services.MessageRouter
-                    .tryGetInstance()
-                    ?.onSessionEstablished(peerID)
+                messageRouterHolder.peek()?.onSessionEstablished(peerID)
             } catch (_: Exception) { }
         }
         meshCore = MeshCore(
@@ -164,6 +225,17 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 override fun gcsMaxBytes(): Int = 400
                 override fun gcsTargetFpr(): Double = 0.01
             },
+            peerFingerprintManager = peerFingerprintManager,
+            debugSettingsManager = debugSettingsManager,
+            liveVoiceManager = liveVoiceManager,
+            meshGraphService = meshGraphService,
+            favoritesPersistenceService = favoritesPersistenceService,
+            contactDirectory = contactDirectory,
+            appStateStore = appStateStore,
+            transportBridgeService = transportBridgeService,
+            verificationService = verificationService,
+            seenMessageStore = seenMessageStore,
+            powerManager = powerManager,
             hooks = MeshCore.Hooks(
                 onMessageReceived = { message -> handleMessageReceived(message) },
                 onAnnounceProcessed = { routed, _ ->
@@ -184,7 +256,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 }
             )
         )
-        fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
+        fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG, transferProgressManager)
     }
 
     private fun handleMessageReceived(message: BitchatMessage): Boolean {
@@ -192,7 +264,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         // duplicate must not create a notification after the conversation state was cleared.
         if (
             !com.bitchat.android.services.IncomingMessageAdmission
-                .admitToAppState(message)
+                .admitToAppState(message, appStateStore, spamFilter)
         ) return false
 
         if (delegate == null && message.isPrivate) {
@@ -322,7 +394,11 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     ])
     override fun startServices() {
         if (isActive) return
-        if (!com.bitchat.android.wifiaware.WifiAwareController.enabled.value) {
+        if (!hasDiscoveryPermission()) {
+            Log.i(TAG, "Wi-Fi Aware discovery permission unavailable; not starting")
+            return
+        }
+        if (!wifiAwareController.enabled.value) {
             Log.i(TAG, "Wi-Fi Aware transport disabled by debug settings; not starting")
             return
         }
@@ -335,167 +411,57 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
             Log.i(TAG, "Wi-Fi Aware unavailable right now; not starting (${supportStatus.reason})")
             return
         }
-        if (recoveryInProgress) {
-            Log.i(TAG, "Wi-Fi Aware recovery cleanup still in progress; deferring start")
-            return
-        }
         val manager = awareManager
         if (manager == null || !manager.isAvailable) {
             Log.w(TAG, "Wi-Fi Aware manager unavailable; not starting")
             return
         }
-        isActive = true
+        val generation = synchronized(recoveryLock) {
+            if (isActive) return
+            if (recoveryInProgress) {
+                startRequestedDuringRecovery = true
+                Log.i(TAG, "Wi-Fi Aware recovery cleanup still in progress; deferring start")
+                return
+            }
+            isActive = true
+            sessionGeneration.incrementAndGet()
+        }
         val startTime = System.currentTimeMillis()
         lastDiscoveryActivityAt.set(startTime)
         lastDiscoveryRefreshAt.set(startTime)
-        val generation = sessionGeneration.incrementAndGet()
         Log.i(TAG, "Starting Wi-Fi Aware mesh with peer ID: $myPeerID")
 
-        manager.attach(object : AttachCallback() {
-            @SuppressLint("MissingPermission")
-            @RequiresPermission(allOf = [
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.NEARBY_WIFI_DEVICES
-            ])
+        val callback = object : AttachCallback() {
             override fun onAttached(session: WifiAwareSession) {
                 if (!isCurrentSession(generation)) {
                     session.close()
                     return
                 }
                 wifiAwareSession = session
+                consecutiveAttachFailures.set(0)
+                if (!hasDiscoveryPermission()) {
+                    handleDiscoveryPermissionLoss(generation)
+                    return
+                }
                 Log.i(TAG, "Wi-Fi Aware attached; starting publish & subscribe")
-
-                // PUBLISH (server role)
-                session.publish(
-                    PublishConfig.Builder()
-                        .setServiceName(SERVICE_NAME)
-                        .setServiceSpecificInfo(myPeerID.toByteArray())
-                        .build(),
-                    object : DiscoverySessionCallback() {
-                        override fun onPublishStarted(pub: PublishDiscoverySession) {
-                            if (!isCurrentSession(generation)) {
-                                pub.close()
-                                return
-                            }
-                            publishSession = pub
-                            Log.d(TAG, "Wi-Fi Aware publish started")
-                            try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance().addDebugMessage(com.bitchat.android.ui.debug.DebugMessage.SystemMessage("Wi-Fi Aware Publish Started")) } catch (_: Exception) {}
-                        }
-                        override fun onServiceDiscovered(
-                            peerHandle: PeerHandle,
-                            serviceSpecificInfo: ByteArray,
-                            matchFilter: List<ByteArray>
-                        ) {
-                            if (!isCurrentSession(generation)) return
-                            val peerId = try { String(serviceSpecificInfo) } catch (_: Exception) { "" }
-                            handleToPeerId[peerHandle] = peerId
-                            if (peerId.isNotBlank()) {
-                                rememberDiscoveredPeer(peerId)
-                                publishHandles[peerId] = peerHandle
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                    offerServerPathIfAppropriate(peerId, peerHandle, "publish discovery")
-                                }
-                            }
-                        }
-
-                        @RequiresApi(Build.VERSION_CODES.Q)
-                        override fun onMessageReceived(
-                            peerHandle: PeerHandle,
-                            message: ByteArray
-                        ) {
-                            if (!isCurrentSession(generation)) return
-                            if (message.isEmpty()) return
-                            val subscriberId = try { String(message) } catch (_: Exception) { "" }
-                            if (subscriberId.startsWith(ROLE_REVERSAL_PREFIX)) {
-                                val requesterId = subscriberId.removePrefix(ROLE_REVERSAL_PREFIX)
-                                handleRoleReversalRequest(peerHandle, requesterId)
-                                return
-                            }
-                            if (subscriberId == myPeerID) return
-
-                            handleToPeerId[peerHandle] = subscriberId
-                            if (subscriberId.isNotBlank()) {
-                                rememberDiscoveredPeer(subscriberId)
-                                publishHandles[subscriberId] = peerHandle
-                            }
-                            handleSubscriberPing(publishSession!!, peerHandle)
-                        }
-
-            override fun onSessionTerminated() {
-                if (!isCurrentSession(generation)) return
-                publishSession = null
-                val shouldRestart = isActive && com.bitchat.android.wifiaware.WifiAwareController.enabled.value
-                Log.w(TAG, "Wi-Fi Aware publish session terminated (restart=$shouldRestart)")
-                handleUnexpectedStop(generation)
-                if (shouldRestart) {
-                    com.bitchat.android.wifiaware.WifiAwareController.restartIfStillEnabled(2000)
+                try {
+                    startDiscovery(session, generation)
+                } catch (_: SecurityException) {
+                    handleDiscoveryPermissionLoss(generation)
                 }
             }
-                    },
-                    Handler(Looper.getMainLooper())
-                )
 
-                // SUBSCRIBE (client role)
-                session.subscribe(
-                    SubscribeConfig.Builder()
-                        .setServiceName(SERVICE_NAME)
-                        .setServiceSpecificInfo(myPeerID.toByteArray(Charsets.UTF_8))
-                        .build(),
-                    object : DiscoverySessionCallback() {
-                        override fun onSubscribeStarted(sub: SubscribeDiscoverySession) {
-                            if (!isCurrentSession(generation)) {
-                                sub.close()
-                                return
-                            }
-                            subscribeSession = sub
-                            Log.d(TAG, "Wi-Fi Aware subscribe started")
-                            try { com.bitchat.android.ui.debug.DebugSettingsManager.getInstance().addDebugMessage(com.bitchat.android.ui.debug.DebugMessage.SystemMessage("Wi-Fi Aware Subscribe Started")) } catch (_: Exception) {}
-                        }
-                        override fun onServiceDiscovered(
-                            peerHandle: PeerHandle,
-                            serviceSpecificInfo: ByteArray,
-                            matchFilter: List<ByteArray>
-                        ) {
-                            if (!isCurrentSession(generation)) return
-                            val peerId = try { String(serviceSpecificInfo) } catch (_: Exception) { "" }
-                            handleToPeerId[peerHandle] = peerId
-                            // This handle came from the subscribe session, so it is valid for
-                            // subscribeSession.sendMessage() (used by maintenance reconnection).
-                            if (peerId.isNotBlank()) subscribeHandles[peerId] = peerHandle
-                            sendSubscribePing(peerId, peerHandle, "discovery")
-                            if (peerId.isNotBlank()) rememberDiscoveredPeer(peerId)
-                        }
-
-                        @RequiresApi(Build.VERSION_CODES.Q)
-                        override fun onMessageReceived(
-                            peerHandle: PeerHandle,
-                            message: ByteArray
-                        ) {
-                            if (!isCurrentSession(generation)) return
-                            if (message.isEmpty()) return
-                            handleServerReady(peerHandle, message)
-                        }
-
-                        override fun onSessionTerminated() {
-                            if (!isCurrentSession(generation)) return
-                            subscribeSession = null
-                            val shouldRestart = isActive && com.bitchat.android.wifiaware.WifiAwareController.enabled.value
-                            Log.w(TAG, "Wi-Fi Aware subscribe session terminated (restart=$shouldRestart)")
-                            handleUnexpectedStop(generation)
-                            if (shouldRestart) {
-                                com.bitchat.android.wifiaware.WifiAwareController.restartIfStillEnabled(2000)
-                            }
-                        }
-                    },
-                    Handler(Looper.getMainLooper())
-                )
-            }
             override fun onAttachFailed() {
                 if (!isCurrentSession(generation)) return
+                if (!hasDiscoveryPermission()) {
+                    handleDiscoveryPermissionLoss(generation)
+                    return
+                }
                 Log.e(TAG, "Wi-Fi Aware attach failed")
-                handleUnexpectedStop(generation)
-                if (com.bitchat.android.wifiaware.WifiAwareController.enabled.value) {
-                    com.bitchat.android.wifiaware.WifiAwareController.restartIfStillEnabled(3000)
+                val retryDelayMs = attachRetryDelayMs(consecutiveAttachFailures.incrementAndGet())
+                handleUnexpectedStop(generation, retryDelayMs)
+                if (wifiAwareController.enabled.value) {
+                    wifiAwareController.restartIfStillEnabled(retryDelayMs)
                 }
             }
 
@@ -503,37 +469,176 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 if (!isCurrentSession(generation)) return
                 Log.e(TAG, "Wi-Fi Aware session terminated unexpectedly")
                 wifiAwareSession = null
-                val shouldRestart = com.bitchat.android.wifiaware.WifiAwareController.enabled.value
+                val shouldRestart = wifiAwareController.enabled.value
                 handleUnexpectedStop(generation)
                 if (shouldRestart) {
-                    com.bitchat.android.wifiaware.WifiAwareController.restartIfStillEnabled(3000)
+                    wifiAwareController.restartIfStillEnabled(3000)
                 }
             }
-        }, Handler(Looper.getMainLooper()))
+        }
+        try {
+            manager.attach(callback, Handler(Looper.getMainLooper()))
+        } catch (_: SecurityException) {
+            handleDiscoveryPermissionLoss(generation)
+            return
+        }
+        if (!isCurrentSession(generation)) return
 
         // Register with cross-layer transport bridge
-        TransportBridgeService.register("WIFI", this)
+        transportBridgeService.register("WIFI", this)
 
         meshCore.startCore()
-        com.bitchat.android.service.MeshServiceHolder.startSharedGossip("WIFI")
-        startPeriodicConnectionMaintenance()
+        meshServiceHolder.startSharedGossip("WIFI")
+        startPeriodicConnectionMaintenance(generation)
         connectionTracker.start()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startDiscovery(session: WifiAwareSession, generation: Int) {
+        // PUBLISH (server role)
+        session.publish(
+            PublishConfig.Builder()
+                .setServiceName(SERVICE_NAME)
+                .setServiceSpecificInfo(myPeerID.toByteArray())
+                .build(),
+            object : DiscoverySessionCallback() {
+                override fun onPublishStarted(pub: PublishDiscoverySession) {
+                    if (!isCurrentSession(generation)) {
+                        pub.close()
+                        return
+                    }
+                    publishSession = pub
+                    Log.d(TAG, "Wi-Fi Aware publish started")
+                    try { debugSettingsManager.get().addDebugMessage(com.bitchat.android.ui.debug.DebugMessage.SystemMessage("Wi-Fi Aware Publish Started")) } catch (_: Exception) {}
+                }
+                override fun onServiceDiscovered(
+                    peerHandle: PeerHandle,
+                    serviceSpecificInfo: ByteArray,
+                    matchFilter: List<ByteArray>
+                ) {
+                    if (!isCurrentSession(generation)) return
+                    val peerId = try { String(serviceSpecificInfo) } catch (_: Exception) { "" }
+                    handleToPeerId[peerHandle] = peerId
+                    if (peerId.isNotBlank()) {
+                        rememberDiscoveredPeer(peerId)
+                        publishHandles[peerId] = peerHandle
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            offerServerPathIfAppropriate(peerId, peerHandle, "publish discovery")
+                        }
+                    }
+                }
+
+                @RequiresApi(Build.VERSION_CODES.Q)
+                override fun onMessageReceived(
+                    peerHandle: PeerHandle,
+                    message: ByteArray
+                ) {
+                    if (!isCurrentSession(generation)) return
+                    if (message.isEmpty()) return
+                    val subscriberId = try { String(message) } catch (_: Exception) { "" }
+                    if (subscriberId.startsWith(ROLE_REVERSAL_PREFIX)) {
+                        val requesterId = subscriberId.removePrefix(ROLE_REVERSAL_PREFIX)
+                        handleRoleReversalRequest(peerHandle, requesterId)
+                        return
+                    }
+                    if (subscriberId == myPeerID) return
+
+                    handleToPeerId[peerHandle] = subscriberId
+                    if (subscriberId.isNotBlank()) {
+                        rememberDiscoveredPeer(subscriberId)
+                        publishHandles[subscriberId] = peerHandle
+                    }
+                    handleSubscriberPing(publishSession!!, peerHandle)
+                }
+
+    override fun onSessionTerminated() {
+        if (!isCurrentSession(generation)) return
+        publishSession = null
+        val shouldRestart = isActive && wifiAwareController.enabled.value
+        Log.w(TAG, "Wi-Fi Aware publish session terminated (restart=$shouldRestart)")
+        handleUnexpectedStop(generation)
+        if (shouldRestart) {
+            wifiAwareController.restartIfStillEnabled(2000)
+        }
+    }
+            },
+            Handler(Looper.getMainLooper())
+        )
+
+        // SUBSCRIBE (client role)
+        session.subscribe(
+            SubscribeConfig.Builder()
+                .setServiceName(SERVICE_NAME)
+                .setServiceSpecificInfo(myPeerID.toByteArray(Charsets.UTF_8))
+                .build(),
+            object : DiscoverySessionCallback() {
+                override fun onSubscribeStarted(sub: SubscribeDiscoverySession) {
+                    if (!isCurrentSession(generation)) {
+                        sub.close()
+                        return
+                    }
+                    subscribeSession = sub
+                    Log.d(TAG, "Wi-Fi Aware subscribe started")
+                    try { debugSettingsManager.get().addDebugMessage(com.bitchat.android.ui.debug.DebugMessage.SystemMessage("Wi-Fi Aware Subscribe Started")) } catch (_: Exception) {}
+                }
+                override fun onServiceDiscovered(
+                    peerHandle: PeerHandle,
+                    serviceSpecificInfo: ByteArray,
+                    matchFilter: List<ByteArray>
+                ) {
+                    if (!isCurrentSession(generation)) return
+                    val peerId = try { String(serviceSpecificInfo) } catch (_: Exception) { "" }
+                    handleToPeerId[peerHandle] = peerId
+                    // This handle came from the subscribe session, so it is valid for
+                    // subscribeSession.sendMessage() (used by maintenance reconnection).
+                    if (peerId.isNotBlank()) subscribeHandles[peerId] = peerHandle
+                    sendSubscribePing(peerId, peerHandle, "discovery")
+                    if (peerId.isNotBlank()) rememberDiscoveredPeer(peerId)
+                }
+
+                @RequiresApi(Build.VERSION_CODES.Q)
+                override fun onMessageReceived(
+                    peerHandle: PeerHandle,
+                    message: ByteArray
+                ) {
+                    if (!isCurrentSession(generation)) return
+                    if (message.isEmpty()) return
+                    handleServerReady(peerHandle, message)
+                }
+
+                override fun onSessionTerminated() {
+                    if (!isCurrentSession(generation)) return
+                    subscribeSession = null
+                    val shouldRestart = isActive && wifiAwareController.enabled.value
+                    Log.w(TAG, "Wi-Fi Aware subscribe session terminated (restart=$shouldRestart)")
+                    handleUnexpectedStop(generation)
+                    if (shouldRestart) {
+                        wifiAwareController.restartIfStillEnabled(2000)
+                    }
+                }
+            },
+            Handler(Looper.getMainLooper())
+        )
     }
 
     /**
      * Stops the Wi-Fi Aware mesh services and cleans up sockets and sessions.
      */
     override fun stopServices() {
-        val wasActive = isActive
-        isActive = false
-        sessionGeneration.incrementAndGet()
+        val wasActive = synchronized(recoveryLock) {
+            val active = isActive
+            isActive = false
+            sessionGeneration.incrementAndGet()
+            startRequestedDuringRecovery = false
+            active
+        }
         Log.i(TAG, "Stopping Wi-Fi Aware mesh")
 
         // Unregister from bridge
-        TransportBridgeService.unregister("WIFI")
-        com.bitchat.android.service.MeshServiceHolder.stopSharedGossip("WIFI")
-        try { com.bitchat.android.services.AppStateStore.clearTransportPeers("WIFI") } catch (_: Exception) { }
-        try { com.bitchat.android.services.AppStateStore.clearTransportDirectPeers("WIFI") } catch (_: Exception) { }
+        transportBridgeService.unregister("WIFI")
+        meshServiceHolder.stopSharedGossip("WIFI")
+        try { appStateStore.clearTransportPeers("WIFI") } catch (_: Exception) { }
+        try { appStateStore.clearTransportDirectPeers("WIFI") } catch (_: Exception) { }
 
         if (wasActive) {
             meshCore.sendLeaveAnnouncement()
@@ -560,7 +665,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
             // Tear down listener threads; this instance is discarded after a full stop.
             try { listenerExec.shutdownNow() } catch (_: Exception) { }
 
-            com.bitchat.android.wifiaware.WifiAwareController.onServiceStopped(this@WifiAwareMeshService)
+            wifiAwareController.onServiceStopped(this@WifiAwareMeshService)
             serviceScope.cancel()
         }
     }
@@ -569,17 +674,33 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         return generation == sessionGeneration.get() && isActive
     }
 
-    private fun handleUnexpectedStop(generation: Int) {
-        if (generation != sessionGeneration.get()) return
-        if (!isActive) {
-            return
+    private fun hasDiscoveryPermission(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.NEARBY_WIFI_DEVICES
+        } else {
+            Manifest.permission.ACCESS_FINE_LOCATION
         }
-        recoveryInProgress = true
-        isActive = false
-        TransportBridgeService.unregister("WIFI")
-        com.bitchat.android.service.MeshServiceHolder.stopSharedGossip("WIFI")
-        try { com.bitchat.android.services.AppStateStore.clearTransportPeers("WIFI") } catch (_: Exception) { }
-        try { com.bitchat.android.services.AppStateStore.clearTransportDirectPeers("WIFI") } catch (_: Exception) { }
+        return ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun handleDiscoveryPermissionLoss(generation: Int) {
+        Log.i(TAG, "Wi-Fi Aware discovery permission no longer available")
+        handleUnexpectedStop(generation, restartDelayMs = null)
+    }
+
+    private fun handleUnexpectedStop(generation: Int, restartDelayMs: Long? = RECOVERY_RESTART_DELAY_MS) {
+        synchronized(recoveryLock) {
+            if (!isCurrentSession(generation)) return
+            recoveryInProgress = true
+            isActive = false
+        }
+        // Must follow isActive = false so a concurrent publish in the controller is either
+        // refused or overwritten here. Must precede the restart requests made by callers.
+        wifiAwareController.onServiceInterrupted(this)
+        transportBridgeService.unregister("WIFI")
+        meshServiceHolder.stopSharedGossip("WIFI")
+        try { appStateStore.clearTransportPeers("WIFI") } catch (_: Exception) { }
+        try { appStateStore.clearTransportDirectPeers("WIFI") } catch (_: Exception) { }
         val oldPublishSession = publishSession
         val oldSubscribeSession = subscribeSession
         val oldWifiAwareSession = wifiAwareSession
@@ -590,7 +711,8 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 try { oldPublishSession?.close() } catch (_: Exception) { }
                 try { oldSubscribeSession?.close() } catch (_: Exception) { }
                 try { oldWifiAwareSession?.close() } catch (_: Exception) { }
-                if (generation == sessionGeneration.get() && !isActive) {
+                // Qualified: a bare isActive here is the coroutine's, which is always true.
+                if (generation == sessionGeneration.get() && !this@WifiAwareMeshService.isActive) {
                     if (publishSession === oldPublishSession) publishSession = null
                     if (subscribeSession === oldSubscribeSession) subscribeSession = null
                     if (wifiAwareSession === oldWifiAwareSession) wifiAwareSession = null
@@ -601,11 +723,16 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                     ingressLinks.clear()
                 }
             } finally {
-                recoveryInProgress = false
-                // Recovery cleanup is done; nudge a restart now that startServices() will no
-                // longer be deferred by recoveryInProgress. The controller coalesces requests.
-                if (com.bitchat.android.wifiaware.WifiAwareController.enabled.value) {
-                    com.bitchat.android.wifiaware.WifiAwareController.restartIfStillEnabled(500)
+                val retryDelayMs = synchronized(recoveryLock) {
+                    val delayMs = restartDelayMs ?: 0L.takeIf { startRequestedDuringRecovery }
+                    startRequestedDuringRecovery = false
+                    recoveryInProgress = false
+                    delayMs.takeIf { generation == sessionGeneration.get() }
+                }
+                // Permission loss alone does not retry. An eligible start requested during
+                // cleanup still gets a turn through the controller after cleanup finishes.
+                if (retryDelayMs != null && wifiAwareController.enabled.value && hasDiscoveryPermission()) {
+                    wifiAwareController.restartIfStillEnabled(retryDelayMs)
                 }
             }
         }
@@ -630,7 +757,7 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
 
     private fun refreshDiscoverySessions(reason: String, now: Long = System.currentTimeMillis()): Boolean {
         if (!isActive || recoveryInProgress) return false
-        if (!com.bitchat.android.wifiaware.WifiAwareController.enabled.value) return false
+        if (!wifiAwareController.enabled.value) return false
 
         val lastRefresh = lastDiscoveryRefreshAt.get()
         val minRefreshMs = powerManager.profile.value.wifiAware.discoverySessionRefreshMinMs
@@ -645,13 +772,15 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     /**
      * Periodic active maintenance: retries connections to discovered but unconnected peers.
      */
-    private fun startPeriodicConnectionMaintenance() {
+    private fun startPeriodicConnectionMaintenance(generation: Int) {
         serviceScope.launch {
-            while (isActive) {
+            // Scoped to the session: a restart can finish while this loop is in delay(), and
+            // an isActive check alone would leave it running next to the new session's loop.
+            while (isCurrentSession(generation)) {
                 try {
                     val schedule = powerManager.profile.value.wifiAware
                     delay(schedule.connectionMaintenanceMs)
-                    if (!isActive) break
+                    if (!isCurrentSession(generation)) break
 
                     val now = System.currentTimeMillis()
 
@@ -1411,17 +1540,6 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
         meshCore.sendFileBroadcast(file)
     }
 
-    /**
-     * Sends a file privately to a specific peer. If no Noise session is established,
-     * a handshake will be initiated and the send is deferred/aborted for now.
-     *
-     * @param recipientPeerID Target peer.
-     * @param file            Encoded metadata and chunks descriptor of the file to send.
-     */
-    override fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket) {
-        meshCore.sendFilePrivate(recipientPeerID, file)
-    }
-
     override fun sendVoiceFrame(recipientPeerID: String?, payload: ByteArray) {
         meshCore.sendVoiceFrame(recipientPeerID, payload)
     }
@@ -1497,39 +1615,11 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     override fun getPeerInfo(peerID: String): PeerInfo? = meshCore.getPeerInfo(peerID)
 
     /**
-     * Updates local metadata for a peer and returns whether the change was applied.
-     *
-     * @param peerID           Target peer id.
-     * @param nickname         Display name.
-     * @param noisePublicKey   Peer’s Noise static public key.
-     * @param signingPublicKey Peer’s Ed25519 signing public key.
-     * @param isVerified       Whether this identity is verified by the user.
-     * @return true if the record was updated or created, false otherwise.
-     */
-    override fun updatePeerInfo(
-        peerID: String,
-        nickname: String,
-        noisePublicKey: ByteArray,
-        signingPublicKey: ByteArray,
-        isVerified: Boolean
-    ): Boolean = meshCore.updatePeerInfo(peerID, nickname, noisePublicKey, signingPublicKey, isVerified)
-
-    /**
      * @return the local device’s long-term identity fingerprint (hex).
      */
     override fun getIdentityFingerprint(): String = meshCore.getIdentityFingerprint()
 
     override fun getStaticNoisePublicKey(): ByteArray? = meshCore.getStaticNoisePublicKey()
-
-    /**
-     * @return true if the UI should show an “encrypted” indicator for this peer.
-     */
-    override fun shouldShowEncryptionIcon(peerID: String) = meshCore.shouldShowEncryptionIcon(peerID)
-
-    /**
-     * @return a snapshot list of peers with established Noise sessions.
-     */
-    override fun getEncryptedPeers(): List<String> = meshCore.getEncryptedPeers()
 
     /**
      * @return the current IPv4/IPv6 address of a connected peer, if any.
@@ -1572,19 +1662,13 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
 
     private fun publishControllerDebugSnapshot() {
         try {
-            com.bitchat.android.wifiaware.WifiAwareController.publishDebugSnapshot(
+            wifiAwareController.publishDebugSnapshot(
                 connected = getDeviceAddressToPeerMapping(),
                 known = getPeerNicknames(),
                 discovered = getDiscoveredPeerIds()
             )
         } catch (_: Exception) { }
     }
-
-    /**
-     * Utility for logs/UI: pretty-prints one peer-to-address mapping per line.
-     */
-    override fun printDeviceAddressesForPeers(): String =
-        getDeviceAddressToPeerMapping().entries.joinToString("\n") { "${it.key} -> ${it.value}" }
 
     /**
      * @return A detailed string containing the debug status of all mesh components.
@@ -1600,10 +1684,6 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
 
     override fun clearAllInternalData() {
         meshCore.clearAllInternalData()
-    }
-
-    override fun clearAllEncryptionData() {
-        meshCore.clearAllEncryptionData()
     }
 
     /** Utility extension to safely close server sockets. */
